@@ -23,6 +23,8 @@ export type Income = {
   amount: number;
   date: string;
   description?: string;
+  // Adding a category field to make it compatible with our dashboard code
+  category?: string;
 };
 
 export type Expense = {
@@ -32,6 +34,12 @@ export type Expense = {
   category: string;
   date: string;
   description?: string;
+};
+
+// Type for combined transactions on dashboard
+export type Transaction = (Income | Expense) & {
+  type: 'income' | 'expense';
+  category: string; // Ensure category is available for both types
 };
 
 // Helper functions for formatting

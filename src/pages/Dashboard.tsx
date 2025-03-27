@@ -137,7 +137,8 @@ const Dashboard = () => {
   // Recent transactions (combined and sorted)
   const recentTransactions = [...income.map(item => ({
     ...item,
-    type: 'income'
+    type: 'income',
+    category: 'Income' // Add a default category for income items
   })), ...expenses.map(item => ({
     ...item,
     type: 'expense'
