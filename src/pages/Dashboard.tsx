@@ -17,14 +17,14 @@ const Dashboard = () => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [timeframe, setTimeframe] = useState('month');
 
-  // Fetch financial data
+
   useEffect(() => {
     if (!user) return;
 
     const fetchData = async () => {
       setLoading(true);
       try {
-        // Get current date range based on timeframe
+ 
         const today = new Date();
         let startDate = new Date();
         
