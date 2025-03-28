@@ -18,6 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const IncomePage = () => {
   const { user } = useAuth();
@@ -49,6 +50,11 @@ const IncomePage = () => {
   // Add recurring options to the income form
   const [recurring, setRecurring] = useState(false);
   const [frequency, setFrequency] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
+
+  // Add state variables for delete functionality (near the top of the component where other states are defined)
+  const [incomeToDelete, setIncomeToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Fetch income data
   useEffect(() => {
@@ -269,6 +275,49 @@ const IncomePage = () => {
       });
     } finally {
       setIsEditing(false);
+    }
+  };
+
+  // Add function to open the delete confirmation dialog
+  const confirmDelete = (id: string) => {
+    setIncomeToDelete(id);
+    setDeleteDialogOpen(true);
+  };
+
+  // Add function to handle the actual delete operation
+  const handleDelete = async () => {
+    if (!user || !incomeToDelete) return;
+    
+    setIsDeleting(true);
+    
+    try {
+      const { error } = await supabase
+        .from('income')
+        .delete()
+        .eq('id', incomeToDelete)
+        .eq('user_id', user.id);
+      
+      if (error) throw error;
+      
+      // Update the local state
+      setIncome(income.filter(item => item.id !== incomeToDelete));
+      
+      toast({
+        title: 'Income deleted',
+        description: 'Your income record has been deleted successfully.',
+      });
+      
+      setDeleteDialogOpen(false);
+    } catch (error: any) {
+      console.error('Error deleting income:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete income. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeleting(false);
+      setIncomeToDelete(null);
     }
   };
 
@@ -573,6 +622,39 @@ const IncomePage = () => {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Income</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this income record? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <Alert variant="destructive">
+            <AlertDescription>
+              Deleting this income will permanently remove it from your records.
+            </AlertDescription>
+          </Alert>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </DashboardLayout>
