@@ -9,4 +9,4 @@
   force = true
 
 [build.environment]
-  REACT_APP_SITE_URL = "https://yoursite.netlify.app" 
+  REACT_APP_SITE_URL = "https://kofifinance.netlify.app" 
