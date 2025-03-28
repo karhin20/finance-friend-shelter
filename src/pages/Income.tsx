@@ -8,13 +8,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
-import { CalendarIcon, Plus, Search, ArrowUpDown } from 'lucide-react';
+import { CalendarIcon, Plus, Search, ArrowUpDown, Pencil, Trash2 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, formatCurrency, formatDate, Income } from '@/lib/supabase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useNavigate } from 'react-router-dom';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const IncomePage = () => {
   const { user } = useAuth();
@@ -34,6 +37,18 @@ const IncomePage = () => {
   const [sortConfig, setSortConfig] = useState<{ key: keyof Income; direction: 'asc' | 'desc' } | null>(
     { key: 'date', direction: 'desc' }
   );
+
+  // Add new state variables for editing
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingIncome, setEditingIncome] = useState<Income | null>(null);
+  const [editAmount, setEditAmount] = useState('');
+  const [editDate, setEditDate] = useState<Date>(new Date());
+  const [editDescription, setEditDescription] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+
+  // Add recurring options to the income form
+  const [recurring, setRecurring] = useState(false);
+  const [frequency, setFrequency] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
 
   // Fetch income data
   useEffect(() => {
@@ -185,6 +200,78 @@ const IncomePage = () => {
   // Calculate total income
   const totalIncome = filteredIncome.reduce((sum, item) => sum + item.amount, 0);
 
+  // Add a function to open the edit dialog
+  const openEditDialog = (income: Income) => {
+    setEditingIncome(income);
+    setEditAmount(income.amount.toString());
+    setEditDate(new Date(income.date));
+    setEditDescription(income.description || '');
+    setEditDialogOpen(true);
+  };
+
+  // Add a function to handle the edit submission
+  const handleEditIncome = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!user || !editingIncome) return;
+    
+    // Validate the amount
+    const amountNum = parseFloat(editAmount);
+    if (isNaN(amountNum) || amountNum <= 0) {
+      toast({
+        title: 'Invalid amount',
+        description: 'Please enter a valid positive number.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    setIsEditing(true);
+    
+    try {
+      // Update the income in the database
+      const { error } = await supabase
+        .from('income')
+        .update({
+          amount: amountNum,
+          date: editDate.toISOString(),
+          description: editDescription || null,
+        })
+        .eq('id', editingIncome.id)
+        .eq('user_id', user.id);
+      
+      if (error) throw error;
+      
+      // Update the local state
+      setIncome(income.map(item => 
+        item.id === editingIncome.id 
+          ? { 
+              ...item, 
+              amount: amountNum, 
+              date: editDate.toISOString(), 
+              description: editDescription || null 
+            } 
+          : item
+      ));
+      
+      toast({
+        title: 'Income updated',
+        description: 'Your income has been updated successfully.',
+      });
+      
+      setEditDialogOpen(false);
+    } catch (error: any) {
+      console.error('Error updating income:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update income. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsEditing(false);
+    }
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-8">
@@ -255,6 +342,30 @@ const IncomePage = () => {
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="recurring"
+                      checked={recurring}
+                      onCheckedChange={(checked) => setRecurring(checked === true)}
+                    />
+                    <Label htmlFor="recurring">Recurring income</Label>
+                  </div>
+                  
+                  {recurring && (
+                    <Select value={frequency} onValueChange={(value: any) => setFrequency(value)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Frequency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="weekly">Weekly</SelectItem>
+                        <SelectItem value="monthly">Monthly</SelectItem>
+                        <SelectItem value="yearly">Yearly</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               </CardContent>
               <CardFooter>
@@ -329,6 +440,11 @@ const IncomePage = () => {
                             <ArrowUpDown className="h-3 w-3" />
                           </div>
                         </TableHead>
+                        <TableHead>
+                          <div className="flex items-center space-x-1">
+                            <span>Actions</span>
+                          </div>
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -338,6 +454,28 @@ const IncomePage = () => {
                           <TableCell className="text-income">{formatCurrency(item.amount)}</TableCell>
                           <TableCell className="text-muted-foreground">
                             {item.description || "-"}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex space-x-1">
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                onClick={() => openEditDialog(item)}
+                                className="text-muted-foreground hover:text-primary"
+                                title="Edit"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                onClick={() => confirmDelete(item.id)}
+                                className="text-muted-foreground hover:text-destructive"
+                                title="Delete"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -354,6 +492,89 @@ const IncomePage = () => {
           </Card>
         </div>
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Income</DialogTitle>
+            <DialogDescription>
+              Update income transaction details.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <form onSubmit={handleEditIncome} className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="editAmount">Amount</Label>
+              <Input
+                id="editAmount"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={editAmount}
+                onChange={(e) => setEditAmount(e.target.value)}
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="editDate">Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    id="editDate"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !editDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {editDate ? format(editDate, "PPP") : <span>Pick a date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={editDate}
+                    onSelect={(date) => date && setEditDate(date)}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="editDescription">Description (Optional)</Label>
+              <Textarea
+                id="editDescription"
+                placeholder="e.g., Salary, Freelance work, Gift"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+              />
+            </div>
+            
+            <DialogFooter>
+              <Button 
+                variant="outline" 
+                onClick={() => setEditDialogOpen(false)}
+                type="button"
+                disabled={isEditing}
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit"
+                disabled={isEditing}
+              >
+                {isEditing ? "Saving..." : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };

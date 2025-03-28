@@ -143,13 +143,21 @@ const Dashboard = () => {
     type: 'expense'
   }))].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
 
-  // Add this calculation in the component
+  // Improved implementation
+  const isCurrentMonth = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    return date.getMonth() === now.getMonth() && 
+           date.getFullYear() === now.getFullYear();
+  };
+
+  // And update where it's used:
   const currentMonthIncome = income
-    .filter(t => t.type === 'income' && isCurrentMonth(new Date(t.date)))
+    .filter(t => isCurrentMonth(t.date))
     .reduce((sum, t) => sum + t.amount, 0);
 
   const currentMonthExpenses = expenses
-    .filter(t => t.type === 'expense' && isCurrentMonth(new Date(t.date)))
+    .filter(t => isCurrentMonth(t.date))
     .reduce((sum, t) => sum + t.amount, 0);
 
   const currentMonthSavings = currentMonthIncome - currentMonthExpenses;
@@ -159,13 +167,6 @@ const Dashboard = () => {
   const savingsRatio = currentMonthIncome > 0 
     ? (currentMonthSavings / currentMonthIncome) * 100 
     : 0;
-
-  // Helper function to check if a date is in the current month
-  const isCurrentMonth = (date: Date) => {
-    const now = new Date();
-    return date.getMonth() === now.getMonth() && 
-           date.getFullYear() === now.getFullYear();
-  };
 
   // Add these calculations at the component level (near where we defined savingsRatio)
   // Get unique categories from expenses
@@ -228,6 +229,17 @@ const Dashboard = () => {
 
   // Then add this to your dashboard
   const financialHealth = getFinancialHealthStatus();
+
+  // Add more detailed financial analytics
+  const topIncomeSources = income.map(item => ({
+    description: item.category,
+    amount: item.amount
+  }));
+
+  const topExpenseCategories = expenses.map(item => ({
+    name: item.category,
+    amount: item.amount
+  }));
 
   return (
     <DashboardLayout>
@@ -541,6 +553,37 @@ const Dashboard = () => {
                 </div>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Money Flow Analysis */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Money Flow Analysis</CardTitle>
+            <CardDescription>Breakdown of your income and expenses</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div>
+                <h4 className="font-medium text-sm">Top Income Sources</h4>
+                {topIncomeSources.map(source => (
+                  <div key={source.description} className="flex justify-between mt-2">
+                    <span className="text-sm">{source.description || 'Unnamed'}</span>
+                    <span className="text-sm font-medium">{formatCurrency(source.amount)}</span>
+                  </div>
+                ))}
+              </div>
+              
+              <div>
+                <h4 className="font-medium text-sm">Top Expense Categories</h4>
+                {topExpenseCategories.map(category => (
+                  <div key={category.name} className="flex justify-between mt-2">
+                    <span className="text-sm">{category.name}</span>
+                    <span className="text-sm font-medium">{formatCurrency(category.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>

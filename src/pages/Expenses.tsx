@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
-import { CalendarIcon, Plus, Search, ArrowUpDown, Trash2, Filter } from 'lucide-react';
+import { CalendarIcon, Plus, Search, ArrowUpDown, Trash2, Filter, Pencil } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -26,11 +26,13 @@ const EXPENSE_CATEGORIES = [
   "Entertainment",
   "Shopping",
   "Utilities",
+  "Internet",
   "Healthcare",
   "Education",
   "Personal Care",
   "Travel",
   "Gifts & Donations",
+  "Church",
   "Business",
   "Taxes",
   "Other"
@@ -60,6 +62,15 @@ const ExpensesPage = () => {
   const [expenseToDelete, setExpenseToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
+  // Edit state
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [editAmount, setEditAmount] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editDate, setEditDate] = useState<Date>(new Date());
+  const [editDescription, setEditDescription] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
 
   // Fetch expense data
   useEffect(() => {
@@ -159,23 +170,28 @@ const ExpensesPage = () => {
   };
 
   const handleDelete = async () => {
-    if (!expenseToDelete) return;
+    if (!user || !expenseToDelete) return;
     
     setIsDeleting(true);
+    
     try {
       const { error } = await supabase
         .from('expenses')
         .delete()
-        .eq('id', expenseToDelete);
-
+        .eq('id', expenseToDelete)
+        .eq('user_id', user.id);
+      
       if (error) throw error;
-
-      // Update expense list
+      
+      // Update the local state
       setExpenses(expenses.filter(expense => expense.id !== expenseToDelete));
+      
       toast({
         title: 'Expense deleted',
-        description: 'The expense has been successfully deleted.',
+        description: 'Your expense has been deleted successfully.',
       });
+      
+      setDeleteDialogOpen(false);
     } catch (error: any) {
       console.error('Error deleting expense:', error);
       toast({
@@ -185,8 +201,6 @@ const ExpensesPage = () => {
       });
     } finally {
       setIsDeleting(false);
-      setDeleteDialogOpen(false);
-      setExpenseToDelete(null);
     }
   };
 
@@ -246,6 +260,81 @@ const ExpensesPage = () => {
     acc[expense.category] += expense.amount;
     return acc;
   }, {});
+
+  // Add a function to open the edit dialog
+  const openEditDialog = (expense: Expense) => {
+    setEditingExpense(expense);
+    setEditAmount(expense.amount.toString());
+    setEditCategory(expense.category);
+    setEditDate(new Date(expense.date));
+    setEditDescription(expense.description || '');
+    setEditDialogOpen(true);
+  };
+
+  // Add a function to handle the edit submission
+  const handleEditExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!user || !editingExpense) return;
+    
+    // Validate the amount
+    const amountNum = parseFloat(editAmount);
+    if (isNaN(amountNum) || amountNum <= 0) {
+      toast({
+        title: 'Invalid amount',
+        description: 'Please enter a valid positive number.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    setIsEditing(true);
+    
+    try {
+      // Update the expense in the database
+      const { error } = await supabase
+        .from('expenses')
+        .update({
+          amount: amountNum,
+          category: editCategory,
+          date: editDate.toISOString(),
+          description: editDescription || null,
+        })
+        .eq('id', editingExpense.id)
+        .eq('user_id', user.id);
+      
+      if (error) throw error;
+      
+      // Update the local state
+      setExpenses(expenses.map(item => 
+        item.id === editingExpense.id 
+          ? { 
+              ...item, 
+              amount: amountNum, 
+              category: editCategory,
+              date: editDate.toISOString(), 
+              description: editDescription || null 
+            } 
+          : item
+      ));
+      
+      toast({
+        title: 'Expense updated',
+        description: 'Your expense has been updated successfully.',
+      });
+      
+      setEditDialogOpen(false);
+    } catch (error: any) {
+      console.error('Error updating expense:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update expense. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsEditing(false);
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -456,14 +545,26 @@ const ExpensesPage = () => {
                             {expense.description || "-"}
                           </TableCell>
                           <TableCell>
-                            <Button 
-                              variant="ghost" 
-                              size="icon"
-                              onClick={() => confirmDelete(expense.id)}
-                              className="text-muted-foreground hover:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            <div className="flex space-x-1">
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                onClick={() => openEditDialog(expense)}
+                                className="text-muted-foreground hover:text-primary"
+                                title="Edit"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                onClick={() => confirmDelete(expense.id)}
+                                className="text-muted-foreground hover:text-destructive"
+                                title="Delete"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -531,6 +632,109 @@ const ExpensesPage = () => {
               {isDeleting ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Expense</DialogTitle>
+            <DialogDescription>
+              Update expense transaction details.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <form onSubmit={handleEditExpense} className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="editAmount">Amount</Label>
+              <Input
+                id="editAmount"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={editAmount}
+                onChange={(e) => setEditAmount(e.target.value)}
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="editCategory">Category</Label>
+              <Select 
+                value={editCategory} 
+                onValueChange={setEditCategory}
+                required
+              >
+                <SelectTrigger id="editCategory">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {EXPENSE_CATEGORIES.map((cat) => (
+                    <SelectItem key={`edit-${cat}`} value={cat || "uncategorized"}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="editDate">Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    id="editDate"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !editDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {editDate ? format(editDate, "PPP") : <span>Pick a date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={editDate}
+                    onSelect={(date) => date && setEditDate(date)}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="editDescription">Description (Optional)</Label>
+              <Textarea
+                id="editDescription"
+                placeholder="e.g., Grocery shopping, Restaurant bill"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+              />
+            </div>
+            
+            <DialogFooter>
+              <Button 
+                variant="outline" 
+                onClick={() => setEditDialogOpen(false)}
+                type="button"
+                disabled={isEditing}
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit"
+                disabled={isEditing}
+              >
+                {isEditing ? "Saving..." : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </DashboardLayout>

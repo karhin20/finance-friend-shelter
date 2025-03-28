@@ -23,6 +23,8 @@ import {
   CartesianGrid 
 } from 'recharts';
 import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, addMonths, subMonths } from 'date-fns';
+import { Button } from '@/components/ui/button';
+import { Download } from 'lucide-react';
 
 const ReportsPage = () => {
   const { user } = useAuth();
@@ -200,6 +202,25 @@ const ReportsPage = () => {
       );
     }
     return null;
+  };
+
+  // Add an export function
+  const exportData = (data: any[], filename: string) => {
+    // Convert data to CSV
+    const headers = Object.keys(data[0]).join(',');
+    const rows = data.map(item => Object.values(item).join(',')).join('\n');
+    const csv = `${headers}\n${rows}`;
+    
+    // Create a Blob and download link
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${filename}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -515,6 +536,27 @@ const ReportsPage = () => {
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Export buttons */}
+        <div className="mt-4 flex items-center justify-end gap-4">
+          <Button 
+            variant="outline" 
+            onClick={() => exportData(income, 'income-export')}
+            disabled={loading || income.length === 0}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export Income
+          </Button>
+
+          <Button 
+            variant="outline" 
+            onClick={() => exportData(expenses, 'expenses-export')}
+            disabled={loading || expenses.length === 0}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export Expenses
+          </Button>
+        </div>
       </div>
     </DashboardLayout>
   );
