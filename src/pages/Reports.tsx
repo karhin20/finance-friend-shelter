@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -251,13 +250,18 @@ const ReportsPage = () => {
             
             <div className="flex items-center space-x-2">
               <Label htmlFor="timeRange" className="sr-only">Time Range</Label>
-              <Select value={timeRange} onValueChange={setTimeRange}>
-                <SelectTrigger id="timeRange" className="w-[140px]">
+              <Select
+                value={timeRange}
+                onValueChange={setTimeRange}
+              >
+                <SelectTrigger>
                   <SelectValue placeholder="Select time range" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="month">Month</SelectItem>
-                  <SelectItem value="year">Year</SelectItem>
+                  <SelectItem value="week">This Week</SelectItem>
+                  <SelectItem value="month">This Month</SelectItem>
+                  <SelectItem value="year">This Year</SelectItem>
+                  <SelectItem value="custom">Custom Range</SelectItem>
                 </SelectContent>
               </Select>
             </div>

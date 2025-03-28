@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -144,6 +143,92 @@ const Dashboard = () => {
     type: 'expense'
   }))].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
 
+  // Add this calculation in the component
+  const currentMonthIncome = income
+    .filter(t => t.type === 'income' && isCurrentMonth(new Date(t.date)))
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const currentMonthExpenses = expenses
+    .filter(t => t.type === 'expense' && isCurrentMonth(new Date(t.date)))
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const currentMonthSavings = currentMonthIncome - currentMonthExpenses;
+
+  // First, let's fix the savingsRatio error by moving it outside the function
+  // Add this calculation after currentMonthSavings
+  const savingsRatio = currentMonthIncome > 0 
+    ? (currentMonthSavings / currentMonthIncome) * 100 
+    : 0;
+
+  // Helper function to check if a date is in the current month
+  const isCurrentMonth = (date: Date) => {
+    const now = new Date();
+    return date.getMonth() === now.getMonth() && 
+           date.getFullYear() === now.getFullYear();
+  };
+
+  // Add these calculations at the component level (near where we defined savingsRatio)
+  // Get unique categories from expenses
+  const categories = expenses.map(e => e.category);
+  const uniqueCategories = new Set(categories).size;
+  const categoryDiversity = uniqueCategories > 0 
+    ? Math.min(uniqueCategories / 5, 1) * 100 
+    : 0;
+
+  // Calculate consistency - how regularly they're tracking finances
+  const oldestTransaction = recentTransactions.length > 0 
+    ? new Date(Math.min(...recentTransactions.map(t => new Date(t.date).getTime())))
+    : new Date();
+  const daysSinceFirst = Math.max(1, Math.floor((new Date().getTime() - oldestTransaction.getTime()) / (1000 * 60 * 60 * 24)));
+  const avgTransactionsPerDay = recentTransactions.length / daysSinceFirst;
+  const consistencyScore = Math.min(avgTransactionsPerDay * 10, 100);
+
+  // Then update the getFinancialHealthStatus function
+  const getFinancialHealthStatus = () => {
+    // Only calculate if we have transactions
+    if (recentTransactions.length === 0) 
+      return { status: 'neutral', message: 'Not enough data yet', score: 0 };
+    
+    // Now using component-level variables
+    // Calculate overall financial health score (weighted average)
+    const weights = { savings: 0.6, diversity: 0.2, consistency: 0.2 };
+    const healthScore = (
+      (savingsRatio * weights.savings) + 
+      (categoryDiversity * weights.diversity) + 
+      (consistencyScore * weights.consistency)
+    );
+    
+    // Map score to status and message
+    if (healthScore >= 70) {
+      return { 
+        status: 'excellent', 
+        message: "Excellent! You're saving well and managing your finances effectively.", 
+        score: Math.round(healthScore)
+      };
+    } else if (healthScore >= 50) {
+      return { 
+        status: 'good', 
+        message: "Good! You're on the right track with your financial management.", 
+        score: Math.round(healthScore)
+      };
+    } else if (healthScore >= 30) {
+      return { 
+        status: 'fair', 
+        message: "You're making progress, but there's room for improvement in your savings rate.", 
+        score: Math.round(healthScore)
+      };
+    } else {
+      return { 
+        status: 'poor', 
+        message: "Consider cutting some expenses and increasing your savings rate.", 
+        score: Math.round(healthScore)
+      };
+    }
+  };
+
+  // Then add this to your dashboard
+  const financialHealth = getFinancialHealthStatus();
+
   return (
     <DashboardLayout>
       <div className="space-y-8">
@@ -209,14 +294,90 @@ const Dashboard = () => {
           <Card className="shadow-sm bg-white">
             <CardHeader className="pb-2">
               <CardDescription>Current Balance</CardDescription>
-              <CardTitle className={`text-2xl flex items-center ${balance >= 0 ? 'text-saving' : 'text-expense'}`}>
+              <CardTitle className={`text-2xl ${balance >= 0 ? 'text-income' : 'text-expense'}`}>
                 {formatCurrency(balance)}
-                <DollarSign className="ml-2 h-5 w-5" />
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-xs text-muted-foreground">
                 {balance >= 0 ? 'You\'re on track!' : 'Spending exceeds income'}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm">
+            <CardHeader className="pb-2">
+              <CardDescription>Monthly Savings</CardDescription>
+              <CardTitle className={`text-2xl ${currentMonthSavings >= 0 ? 'text-income' : 'text-expense'}`}>
+                {formatCurrency(currentMonthSavings)}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">
+                {currentMonthSavings >= 0 
+                  ? "You're saving well this month!" 
+                  : "Your expenses exceed your income this month."}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm">
+            <CardHeader>
+              <CardTitle>Financial Health</CardTitle>
+              <CardDescription>Based on your saving habits and activities</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="relative pt-1">
+                <div className="flex mb-2 items-center justify-between">
+                  <div>
+                    <span className={`text-xl font-semibold inline-block ${
+                      financialHealth.status === 'excellent' ? 'text-green-500' :
+                      financialHealth.status === 'good' ? 'text-blue-500' :
+                      financialHealth.status === 'fair' ? 'text-yellow-500' :
+                      'text-red-500'
+                    }`}>
+                      {financialHealth.status === 'excellent' ? 'Excellent' :
+                       financialHealth.status === 'good' ? 'Good' :
+                       financialHealth.status === 'fair' ? 'Fair' :
+                       'Needs Attention'}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm font-semibold inline-block text-muted-foreground">
+                      Score: {financialHealth.score}/100
+                    </span>
+                  </div>
+                </div>
+                <div className="flex h-2 overflow-hidden rounded bg-muted/30">
+                  <div style={{ width: `${financialHealth.score}%` }} 
+                    className={`${
+                      financialHealth.status === 'excellent' ? 'bg-green-500' :
+                      financialHealth.status === 'good' ? 'bg-blue-500' :
+                      financialHealth.status === 'fair' ? 'bg-yellow-500' :
+                      'bg-red-500'
+                    }`}>
+                  </div>
+                </div>
+              </div>
+              
+              <p className="text-muted-foreground">{financialHealth.message}</p>
+              
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium">Suggestions for Improvement:</h4>
+                <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
+                  {savingsRatio < 20 && (
+                    <li>Try to save at least 20% of your income each month</li>
+                  )}
+                  {uniqueCategories < 5 && (
+                    <li>Track expenses across more categories for better insights</li>
+                  )}
+                  {avgTransactionsPerDay < 0.5 && (
+                    <li>Log your transactions more regularly for accurate tracking</li>
+                  )}
+                  {totalExpenses > totalIncome && (
+                    <li>Your expenses exceed your income. Consider reducing non-essential spending</li>
+                  )}
+                </ul>
               </div>
             </CardContent>
           </Card>

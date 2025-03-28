@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -384,6 +383,18 @@ const SettingsPage = () => {
                     onCheckedChange={(checked) => handleNotificationChange('weekly', checked)}
                   />
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Bill Reminders</CardTitle>
+                <CardDescription>Never miss a payment deadline</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {/* Form to add new bill reminders with name, amount, and due date */}
+                {/* List of upcoming bills */}
+                {/* Option to mark bills as paid */}
               </CardContent>
             </Card>
           </TabsContent>

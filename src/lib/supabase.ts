@@ -1,14 +1,11 @@
-
 import { createClient } from '@supabase/supabase-js';
 
 // Initialize Supabase client
-// Use environment variables or fallback to empty values
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder-supabase-url.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Show a warning if environment variables are missing
-if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-  console.warn('Missing Supabase environment variables. Using placeholder values. The app will not function correctly until proper values are provided.');
+if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Supabase URL and Anon Key must be provided.");
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -46,9 +43,9 @@ export type Transaction = (Income | Expense) & {
 
 // Helper functions for formatting
 export const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('en-GH', {
     style: 'currency',
-    currency: 'USD',
+    currency: 'GHS',
   }).format(amount);
 };
 

@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -270,20 +269,16 @@ const ExpensesPage = () => {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="amount">Amount</Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                    <Input
-                      id="amount"
-                      type="number"
-                      placeholder="0.00"
-                      className="pl-8"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      step="0.01"
-                      min="0.01"
-                      required
-                    />
-                  </div>
+                  <Input
+                    id="amount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    required
+                  />
                 </div>
 
                 <div className="space-y-2">
@@ -294,7 +289,9 @@ const ExpensesPage = () => {
                     </SelectTrigger>
                     <SelectContent>
                       {EXPENSE_CATEGORIES.map((cat) => (
-                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                        <SelectItem key={cat} value={cat || "uncategorized"}>
+                          {cat}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -372,14 +369,19 @@ const ExpensesPage = () => {
                 {/* Category filter */}
                 <div className="flex items-center">
                   <Filter className="mr-2 h-4 w-4 text-muted-foreground" />
-                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                    <SelectTrigger className="w-full sm:w-[200px]">
-                      <SelectValue placeholder="Filter by category" />
+                  <Select
+                    value={categoryFilter}
+                    onValueChange={setCategoryFilter}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="All Categories" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Categories</SelectItem>
+                      <SelectItem value="all">All Categories</SelectItem>
                       {uniqueCategories.map((cat) => (
-                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                        <SelectItem key={cat} value={cat || "uncategorized"}>
+                          {cat || "Uncategorized"}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

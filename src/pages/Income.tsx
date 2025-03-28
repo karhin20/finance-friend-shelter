@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -15,12 +14,14 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, formatCurrency, formatDate, Income } from '@/lib/supabase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useNavigate } from 'react-router-dom';
 
 const IncomePage = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [income, setIncome] = useState<Income[]>([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   // Form state
   const [amount, setAmount] = useState<string>('');
@@ -47,7 +48,27 @@ const IncomePage = () => {
           .eq('user_id', user.id)
           .order('date', { ascending: false });
 
-        if (error) throw error;
+        if (error) {
+          console.error('Error fetching income:', error);
+          
+          // If table doesn't exist, redirect to db-setup
+          if (error.message.includes('does not exist')) {
+            toast({
+              title: 'Database setup needed',
+              description: 'Tables need to be created. Redirecting to setup page.',
+              variant: 'destructive',
+            });
+            
+            // Wait a moment to show the toast, then redirect
+            setTimeout(() => {
+              navigate('/db-setup');
+            }, 1500);
+            return;
+          }
+          
+          throw error;
+        }
+        
         setIncome(data || []);
       } catch (error: any) {
         console.error('Error fetching income:', error.message);
@@ -62,7 +83,7 @@ const IncomePage = () => {
     };
 
     fetchIncome();
-  }, [user, toast]);
+  }, [user, toast, navigate]);
 
   // Add new income
   const handleAddIncome = async (e: React.FormEvent) => {
@@ -186,20 +207,16 @@ const IncomePage = () => {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="amount">Amount</Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                    <Input
-                      id="amount"
-                      type="number"
-                      placeholder="0.00"
-                      className="pl-8"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      step="0.01"
-                      min="0.01"
-                      required
-                    />
-                  </div>
+                  <Input
+                    id="amount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    required
+                  />
                 </div>
 
                 <div className="space-y-2">

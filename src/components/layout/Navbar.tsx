@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
@@ -9,7 +8,8 @@ import {
   Settings, 
   LogOut,
   Menu,
-  X
+  X,
+  PiggyBank
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,17 +18,18 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 type NavItem = {
-  icon: React.ElementType;
+  icon: React.ReactNode;
   label: string;
   path: string;
 };
 
 const navItems: NavItem[] = [
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
-  { icon: Wallet, label: 'Income', path: '/income' },
-  { icon: Receipt, label: 'Expenses', path: '/expenses' },
-  { icon: BarChart3, label: 'Reports', path: '/reports' },
-  { icon: Settings, label: 'Settings', path: '/settings' },
+  { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', path: '/dashboard' },
+  { icon: <Wallet className="h-4 w-4" />, label: 'Income', path: '/income' },
+  { icon: <Receipt className="h-4 w-4" />, label: 'Expenses', path: '/expenses' },
+  { icon: <PiggyBank className="h-4 w-4" />, label: 'Savings', path: '/savings' },
+  { icon: <BarChart3 className="h-4 w-4" />, label: 'Reports', path: '/reports' },
+  { icon: <Settings className="h-4 w-4" />, label: 'Settings', path: '/settings' },
 ];
 
 export function Navbar() {
@@ -70,8 +71,8 @@ export function Navbar() {
   return (
     <header 
       className={cn(
-        'fixed top-0 left-0 right-0 z-40 bg-background/80 backdrop-blur-xl transition-all duration-200',
-        scrolled ? 'shadow-sm border-b' : 'border-b border-transparent'
+        'fixed top-0 left-0 right-0 z-40 bg-white border-b transition-all duration-200',
+        scrolled ? 'shadow-sm' : ''
       )}
     >
       <div className="container mx-auto flex items-center justify-between h-16 px-4">
@@ -95,7 +96,7 @@ export function Navbar() {
                     location.pathname === item.path && 'nav-link-active'
                   )}
                 >
-                  <item.icon className="h-4 w-4" />
+                  {item.icon}
                   <span>{item.label}</span>
                 </Link>
               ))}
@@ -135,34 +136,52 @@ export function Navbar() {
 
       {/* Mobile Navigation Menu */}
       {isMobile && (
-        <div
+        <div 
           className={cn(
-            'fixed inset-0 z-50 bg-background pt-16 transition-transform duration-300 ease-in-out',
-            isOpen ? 'translate-x-0' : 'translate-x-full'
+            "fixed inset-0 z-50 md:hidden",
+            isOpen ? "block" : "hidden"
           )}
         >
-          <nav className="flex flex-col p-4">
-            {navItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={cn(
-                  'nav-link py-3 my-1',
-                  location.pathname === item.path && 'nav-link-active'
-                )}
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black bg-opacity-50" 
+            onClick={() => setIsOpen(false)}
+          />
+          
+          {/* Nav menu - completely solid, removed header with "Menu" text */}
+          <div className="absolute right-0 top-0 h-full w-3/4 max-w-xs bg-white shadow-xl">
+            {/* Close button at the top right */}
+            <div className="flex justify-end p-4">
+              <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+            
+            {/* Navigation items */}
+            <nav className="p-4 pt-0">
+              {navItems.map((item) => (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={() => setIsOpen(false)}
+                  className={cn(
+                    "nav-link py-3 my-1",
+                    location.pathname === item.path && 'nav-link-active'
+                  )}
+                >
+                  {item.icon}
+                  <span>{item.label}</span>
+                </Link>
+              ))}
+              <button 
+                onClick={signOut}
+                className="nav-link py-3 my-1 text-left text-destructive"
               >
-                <item.icon className="h-5 w-5 mr-3" />
-                <span>{item.label}</span>
-              </Link>
-            ))}
-            <button 
-              onClick={signOut}
-              className="nav-link py-3 my-1 text-left text-destructive"
-            >
-              <LogOut className="h-5 w-5 mr-3" />
-              <span>Sign out</span>
-            </button>
-          </nav>
+                <LogOut className="h-5 w-5 mr-3" />
+                <span>Sign out</span>
+              </button>
+            </nav>
+          </div>
         </div>
       )}
     </header>
