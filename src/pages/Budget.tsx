@@ -152,20 +152,20 @@ const BudgetPage = () => {
       if (existingBudget) {
         // Check if the existing budget has a temporary ID
         if (existingBudget.id.startsWith('temp-')) {
-          // Create new budget instead of updating
+          // Create a new budget item instead of updating the temp one
           const { data, error } = await supabase
             .from('budgets')
             .insert([newItem])
-            .select()
-            .single();
+            .select();
 
           if (error) throw error;
 
-          setBudgetItems(budgetItems.map(item => 
-            item.category === selectedCategory ? data : item
+          // Update the budget items, replacing the temp item with the new one
+          setBudgetItems(prev => prev.map(item => 
+            (item.id === existingBudget.id) ? (data[0] || item) : item
           ));
         } else {
-          // Update existing budget
+          // Update existing budget with real ID
           const { error } = await supabase
             .from('budgets')
             .update(newItem)
@@ -173,8 +173,8 @@ const BudgetPage = () => {
 
           if (error) throw error;
 
-          setBudgetItems(budgetItems.map(item => 
-            item.id === existingBudget.id ? { ...item, ...newItem } : item
+          setBudgetItems(prev => prev.map(item => 
+            (item.id === existingBudget.id) ? { ...item, ...newItem } : item
           ));
         }
       } else {
@@ -182,14 +182,12 @@ const BudgetPage = () => {
         const { data, error } = await supabase
           .from('budgets')
           .insert([newItem])
-          .select()
-          .single();
+          .select();
 
         if (error) throw error;
 
-        setBudgetItems(budgetItems.map(item => 
-          item.category === selectedCategory ? data : item
-        ));
+        // Add the new budget item to the state
+        setBudgetItems(prev => [...prev, ...(data || [])]);
       }
 
       setSelectedCategory('');
@@ -352,7 +350,18 @@ const BudgetPage = () => {
                           <AlertCircle className="h-4 w-4 text-destructive" />
                         )}
                       </div>
-                      <Button onClick={() => handleEditBudget({ category, planned_amount: plannedAmount, actual_amount: actualAmount, id: category, user_id: user.id, month: selectedMonth })}>
+                      <Button onClick={() => {
+                        const existingBudget = budgetItems.find(item => item.category === category);
+                        const budgetToEdit = existingBudget || { 
+                          category, 
+                          planned_amount: plannedAmount, 
+                          actual_amount: actualAmount,
+                          id: `temp-${category}`, 
+                          user_id: user?.id || '', 
+                          month: selectedMonth 
+                        };
+                        handleEditBudget(budgetToEdit);
+                      }}>
                         <Edit className="h-4 w-4" />
                       </Button>
                     </div>

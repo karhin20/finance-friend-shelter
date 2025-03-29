@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -195,49 +195,59 @@ const Dashboard = () => {
 
   // Then update the getFinancialHealthStatus function
   const getFinancialHealthStatus = () => {
-    // Only calculate if we have transactions
     if (recentTransactions.length === 0) 
       return { status: 'neutral', message: 'Not enough data yet', score: 0 };
-    
-    // Now using component-level variables
+
     // Calculate overall financial health score (weighted average)
-    const weights = { savings: 0.6, diversity: 0.2, consistency: 0.2 };
+    const weights = { savings: 0.5, diversity: 0.3, consistency: 0.2 };
     const healthScore = (
       (savingsRatio * weights.savings) + 
       (categoryDiversity * weights.diversity) + 
       (consistencyScore * weights.consistency)
     );
+
+    let status = 'poor';
+    let message = "Consider reviewing your financial habits.";
     
-    // Map score to status and message
-    if (healthScore >= 70) {
-      return { 
-        status: 'excellent', 
-        message: "Excellent! You're saving well and managing your finances effectively.", 
-        score: Math.round(healthScore)
-      };
-    } else if (healthScore >= 50) {
-      return { 
-        status: 'good', 
-        message: "Good! You're on the right track with your financial management.", 
-        score: Math.round(healthScore)
-      };
-    } else if (healthScore >= 30) {
-      return { 
-        status: 'fair', 
-        message: "You're making progress, but there's room for improvement in your savings rate.", 
-        score: Math.round(healthScore)
-      };
-    } else {
-      return { 
-        status: 'poor', 
-        message: "Consider cutting some expenses and increasing your savings rate.", 
-        score: Math.round(healthScore)
-      };
+    if (healthScore >= 80) {
+      status = 'excellent';
+      message = "Excellent! You're saving well and managing your finances effectively.";
+    } else if (healthScore >= 60) {
+      status = 'good';
+      message = "Good! You're on the right track with your financial management.";
+    } else if (healthScore >= 40) {
+      status = 'fair';
+      message = "You're making progress, but there's room for improvement.";
     }
+
+    // Provide tailored advice based on financial behavior
+    const advice = [];
+    if (savingsRatio < 20) {
+      advice.push("Aim to save at least 20% of your income each month.");
+    }
+    if (uniqueCategories < 5) {
+      advice.push("Consider tracking expenses across more categories for better insights.");
+    }
+    if (avgTransactionsPerDay < 0.5) {
+      advice.push("Log your transactions more regularly for accurate tracking.");
+    }
+    if (totalExpenses > totalIncome) {
+      advice.push("Your expenses exceed your income. Consider reducing non-essential spending.");
+    }
+    if (currentMonthSavings < 0) {
+      advice.push("This month, your expenses have exceeded your income. Review your spending.");
+    }
+
+    return {
+      status,
+      message,
+      score: Math.round(healthScore),
+      advice: advice.length > 0 ? advice : ["Keep up the good work!"]
+    };
   };
 
   // Then add this to your dashboard
-  const financialHealth = getFinancialHealthStatus();
+  const financialHealth = useMemo(getFinancialHealthStatus, [recentTransactions, savingsRatio, categoryDiversity, consistencyScore]);
 
   // Add more detailed financial analytics
   const topIncomeSources = income.map(item => ({
@@ -398,18 +408,9 @@ const Dashboard = () => {
               <div className="space-y-2">
                 <h4 className="text-sm font-medium">Suggestions for Improvement:</h4>
                 <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
-                  {savingsRatio < 20 && (
-                    <li>Try to save at least 20% of your income each month</li>
-                  )}
-                  {uniqueCategories < 5 && (
-                    <li>Track expenses across more categories for better insights</li>
-                  )}
-                  {avgTransactionsPerDay < 0.5 && (
-                    <li>Log your transactions more regularly for accurate tracking</li>
-                  )}
-                  {totalExpenses > totalIncome && (
-                    <li>Your expenses exceed your income. Consider reducing non-essential spending</li>
-                  )}
+                  {financialHealth.advice.map((item, index) => (
+                    <li key={index}>{item}</li>
+                  ))}
                 </ul>
               </div>
             </CardContent>

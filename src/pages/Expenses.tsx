@@ -12,7 +12,7 @@ import { CalendarIcon, Plus, Search, ArrowUpDown, Trash2, Filter, Pencil } from 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase, formatCurrency, formatDate, Expense } from '@/lib/supabase';
+import { supabase, formatCurrency, formatDate } from '@/lib/supabase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -37,6 +37,17 @@ const EXPENSE_CATEGORIES = [
   "Taxes",
   "Other"
 ];
+
+// Let's update the Expense type if it's defined in this file
+type Expense = {
+  id: string;
+  user_id: string;
+  amount: number;
+  category: string;
+  date: string;
+  description?: string | null;
+  month?: string; // Add month field
+};
 
 const ExpensesPage = () => {
   const { user } = useAuth();
@@ -128,27 +139,64 @@ const ExpensesPage = () => {
 
     setIsSubmitting(true);
     try {
-      const { data, error } = await supabase.from('expenses').insert([
-        {
-          user_id: user.id,
-          amount: amountNum,
-          category,
-          date: date.toISOString(),
-          description: description.trim() || null,
-        },
-      ]).select();
+      // Add month field derived from date
+      const expenseDate = new Date(date);
+      const month = `${expenseDate.getFullYear()}-${String(expenseDate.getMonth() + 1).padStart(2, '0')}`;
+      
+      // Create the expense data without the month field
+      const expenseData: {
+        user_id: string;
+        amount: number;
+        category: string;
+        date: string;
+        description: string | null;
+        month?: string;
+      } = {
+        user_id: user.id,
+        amount: amountNum,
+        category,
+        date: date.toISOString(),
+        description: description.trim() || null
+      };
+      
+      // Only add the month field if it exists in the database schema
+      try {
+        // First try with month field
+        const { error } = await supabase.from('expenses').insert([{
+          ...expenseData,
+          month
+        }]);
+        
+        if (error) {
+          // If error contains message about month column, try without it
+          if (error.message && error.message.includes('month')) {
+            console.log('Month column not found, trying without it');
+            const { error: error2 } = await supabase.from('expenses').insert([expenseData]);
+            if (error2) throw error2;
+          } else {
+            throw error;
+          }
+        }
+      } catch (insertError: any) {
+        throw insertError;
+      }
 
-      if (error) throw error;
+      // Fetch the latest expenses to update the list
+      const { data: updatedExpenses } = await supabase
+        .from('expenses')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('date', { ascending: false });
 
       // Reset form and update expense list
       setAmount('');
       setCategory('');
       setDate(new Date());
       setDescription('');
-      setExpenses([...(data || []), ...expenses]);
+      setExpenses(updatedExpenses || []);
 
       toast({
-        title: 'Expense added',
+        title: 'Success',
         description: `Successfully added ${formatCurrency(amountNum)} expense.`,
       });
     } catch (error: any) {
@@ -291,35 +339,74 @@ const ExpensesPage = () => {
     setIsEditing(true);
     
     try {
-      // Update the expense in the database
-      const { error } = await supabase
-        .from('expenses')
-        .update({
-          amount: amountNum,
-          category: editCategory,
-          date: editDate.toISOString(),
-          description: editDescription || null,
-        })
-        .eq('id', editingExpense.id)
-        .eq('user_id', user.id);
+      // Generate month field from the date
+      const expenseDate = new Date(editDate);
+      const month = `${expenseDate.getFullYear()}-${String(expenseDate.getMonth() + 1).padStart(2, '0')}`;
       
-      if (error) throw error;
+      // Create update data without the month field
+      const updateData: {
+        amount: number;
+        category: string;
+        date: string;
+        description: string | null;
+        month?: string;
+      } = {
+        amount: amountNum,
+        category: editCategory,
+        date: editDate.toISOString(),
+        description: editDescription || null
+      };
+      
+      try {
+        // First try updating with month field
+        const { error } = await supabase
+          .from('expenses')
+          .update({
+            ...updateData,
+            month
+          })
+          .eq('id', editingExpense.id)
+          .eq('user_id', user.id);
+        
+        if (error) {
+          // If error contains message about month column, try without it
+          if (error.message && error.message.includes('month')) {
+            console.log('Month column not found, trying update without it');
+            const { error: error2 } = await supabase
+              .from('expenses')
+              .update(updateData)
+              .eq('id', editingExpense.id)
+              .eq('user_id', user.id);
+            
+            if (error2) throw error2;
+          } else {
+            throw error;
+          }
+        }
+      } catch (updateError: any) {
+        throw updateError;
+      }
       
       // Update the local state
+      const updatedExpense = {
+        ...editingExpense,
+        amount: amountNum,
+        category: editCategory,
+        date: editDate.toISOString(),
+        description: editDescription || null
+      };
+      
+      // Conditionally add month field to the local state if it exists in the original expense
+      if (editingExpense.month !== undefined) {
+        updatedExpense.month = month;
+      }
+      
       setExpenses(expenses.map(item => 
-        item.id === editingExpense.id 
-          ? { 
-              ...item, 
-              amount: amountNum, 
-              category: editCategory,
-              date: editDate.toISOString(), 
-              description: editDescription || null 
-            } 
-          : item
+        item.id === editingExpense.id ? updatedExpense : item
       ));
       
       toast({
-        title: 'Expense updated',
+        title: 'Success',
         description: 'Your expense has been updated successfully.',
       });
       
