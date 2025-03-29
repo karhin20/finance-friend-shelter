@@ -7,50 +7,95 @@ import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { 
-  BarChart, 
-  Bar, 
-  PieChart, 
-  Pie, 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  Legend, 
-  Cell, 
-  ResponsiveContainer, 
-  CartesianGrid 
+import {
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  Cell,
+  ResponsiveContainer,
+  CartesianGrid
 } from 'recharts';
-import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, addMonths, subMonths } from 'date-fns';
+import {
+  format,
+  startOfMonth, endOfMonth,
+  startOfYear, endOfYear,
+  startOfWeek, endOfWeek, // Import week functions
+  addMonths, subMonths,
+  addYears, subYears,    // Import year functions (alternative to setting year)
+  addWeeks, subWeeks     // Import week navigation functions
+} from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { Download } from 'lucide-react';
+import { Download, Loader2 } from 'lucide-react';
+
+// --- Helper Components (ChartLoadingState, ChartNoDataState - Keep as before) ---
+const ChartLoadingState = ({ height = 350 }: { height?: number }) => (
+    <div style={{ height: `${height}px` }} className="absolute inset-0 flex items-center justify-center w-full bg-background/50 backdrop-blur-sm z-10">
+      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+    </div>
+  );
+
+const ChartNoDataState = ({ message, height = 350 }: { message: string, height?: number }) => (
+  <div style={{ height: `${height}px` }} className="flex items-center justify-center w-full">
+    <p className="text-muted-foreground">{message}</p>
+  </div>
+);
+// --- End Helper Components ---
+
 
 const ReportsPage = () => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [income, setIncome] = useState<Income[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [income, setIncome] = useState<Income[]>(() => {
+    const cachedIncome = localStorage.getItem('income');
+    return cachedIncome ? JSON.parse(cachedIncome) : [];
+  });
+  const [expenses, setExpenses] = useState<Expense[]>(() => {
+    const cachedExpenses = localStorage.getItem('expenses');
+    return cachedExpenses ? JSON.parse(cachedExpenses) : [];
+  });
+  const [isFetching, setIsFetching] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
-  const [timeRange, setTimeRange] = useState('month');
+  // Default to month, but allow 'week'
+  const [timeRange, setTimeRange] = useState<'week' | 'month' | 'year'>('month');
   const [currentPeriod, setCurrentPeriod] = useState(() => new Date());
 
-  // Colors for charts
   const COLORS = ['#0A84FF', '#00C49F', '#FF5A5F', '#FFBB28', '#AF52DE', '#FF9500', '#5856D6', '#5AC8FA', '#30B0C7'];
 
   // Calculate date range based on timeRange and currentPeriod
   const getDateRange = () => {
-    if (timeRange === 'month') {
+    // Optional: Define week start day (0=Sun, 1=Mon, etc.)
+    const weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 1; // Start week on Monday
+
+    if (timeRange === 'week') {
+      const start = startOfWeek(currentPeriod, { weekStartsOn });
+      const end = endOfWeek(currentPeriod, { weekStartsOn });
       return {
-        start: startOfMonth(currentPeriod),
-        end: endOfMonth(currentPeriod),
+        start,
+        end,
+        // Format label for clarity, e.g., "Jun 10 - Jun 16, 2024"
+        label: `${format(start, 'MMM d')} - ${format(end, 'MMM d, yyyy')}`
+      };
+    } else if (timeRange === 'month') {
+      const start = startOfMonth(currentPeriod);
+      const end = endOfMonth(currentPeriod);
+      return {
+        start,
+        end,
         label: format(currentPeriod, 'MMMM yyyy')
       };
-    } else {
+    } else { // year
+      const start = startOfYear(currentPeriod);
+      const end = endOfYear(currentPeriod);
       return {
-        start: startOfYear(currentPeriod),
-        end: endOfYear(currentPeriod),
+        start,
+        end,
         label: format(currentPeriod, 'yyyy')
       };
     }
@@ -60,71 +105,77 @@ const ReportsPage = () => {
 
   // Navigate to previous or next period
   const navigatePeriod = (direction: 'prev' | 'next') => {
-    if (timeRange === 'month') {
-      setCurrentPeriod(direction === 'prev' ? subMonths(currentPeriod, 1) : addMonths(currentPeriod, 1));
-    } else {
-      const newDate = new Date(currentPeriod);
-      newDate.setFullYear(newDate.getFullYear() + (direction === 'prev' ? -1 : 1));
-      setCurrentPeriod(newDate);
+    const amount = direction === 'prev' ? -1 : 1;
+    if (timeRange === 'week') {
+      setCurrentPeriod(prev => addWeeks(prev, amount));
+    } else if (timeRange === 'month') {
+      setCurrentPeriod(prev => addMonths(prev, amount));
+    } else { // year
+      setCurrentPeriod(prev => addYears(prev, amount));
     }
   };
 
-  // Fetch financial data
+  // Fetch financial data - useEffect remains largely the same
   useEffect(() => {
-    if (!user) return;
-
     const fetchData = async () => {
-      setLoading(true);
+      if (!user) {
+        setIsFetching(false);
+        return;
+      }
+
+      setIsFetching(true);
       try {
-        // Format dates for query
         const startStr = start.toISOString();
         const endStr = end.toISOString();
+
+        const [incomeResult, expensesResult] = await Promise.all([
+          supabase
+            .from('income')
+            .select('*')
+            .eq('user_id', user.id)
+            .gte('date', startStr)
+            .lte('date', endStr)
+            .order('date', { ascending: true }),
+          supabase
+            .from('expenses')
+            .select('*')
+            .eq('user_id', user.id)
+            .gte('date', startStr)
+            .lte('date', endStr)
+            .order('date', { ascending: true })
+        ]);
+
+        if (incomeResult.error) throw incomeResult.error;
+        if (expensesResult.error) throw expensesResult.error;
+
+        setIncome(incomeResult.data || []);
+        setExpenses(expensesResult.data || []);
         
-        // Fetch income
-        const { data: incomeData, error: incomeError } = await supabase
-          .from('income')
-          .select('*')
-          .eq('user_id', user.id)
-          .gte('date', startStr)
-          .lte('date', endStr)
-          .order('date', { ascending: true });
+        // Cache data in local storage
+        localStorage.setItem('income', JSON.stringify(incomeResult.data || []));
+        localStorage.setItem('expenses', JSON.stringify(expensesResult.data || []));
 
-        if (incomeError) throw incomeError;
-        setIncome(incomeData || []);
-
-        // Fetch expenses
-        const { data: expensesData, error: expensesError } = await supabase
-          .from('expenses')
-          .select('*')
-          .eq('user_id', user.id)
-          .gte('date', startStr)
-          .lte('date', endStr)
-          .order('date', { ascending: true });
-
-        if (expensesError) throw expensesError;
-        setExpenses(expensesData || []);
       } catch (error: any) {
-        console.error('Error fetching report data:', error);
+        console.error('Error fetching data:', error);
         toast({
           title: 'Error',
-          description: 'Failed to load financial data. Please try again.',
+          description: `Failed to load financial data: ${error.message || 'Unknown error'}`,
           variant: 'destructive',
         });
       } finally {
-        setLoading(false);
+        setIsFetching(false);
       }
     };
 
     fetchData();
-  }, [user, toast, start, end]);
+  }, [user, start.toISOString(), end.toISOString(), toast]);
 
-  // Calculate summary metrics
+  // --- Calculations (totalIncome, totalExpenses, balance, savingsRate, pieChartData) remain the same ---
   const totalIncome = income.reduce((sum, item) => sum + item.amount, 0);
   const totalExpenses = expenses.reduce((sum, item) => sum + item.amount, 0);
   const balance = totalIncome - totalExpenses;
   const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpenses) / totalIncome * 100).toFixed(1) : '0.0';
 
-  // Prepare data for expense categories pie chart
   const categoryData = expenses.reduce((acc: { [key: string]: number }, expense) => {
     if (!acc[expense.category]) {
       acc[expense.category] = 0;
@@ -138,45 +189,64 @@ const ReportsPage = () => {
       name: category,
       value: categoryData[category]
     }))
-    .sort((a, b) => b.value - a.value); // Sort by value descending
+    .sort((a, b) => b.value - a.value);
+
 
   // Prepare data for income vs expenses by time
   const getTimeSeriesData = () => {
     const incomeMap: Record<string, number> = {};
     const expenseMap: Record<string, number> = {};
-    
+
     // Format keys based on timeframe
     const getDateKey = (dateStr: string) => {
-      const date = new Date(dateStr);
-      return timeRange === 'month' 
-        ? format(date, 'd') // Day of month
-        : format(date, 'MMM'); // Month name
+      try {
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return 'Invalid Date';
+
+        if (timeRange === 'week') {
+          return format(date, 'EEE'); // Day of week (e.g., 'Mon')
+        } else if (timeRange === 'month') {
+          return format(date, 'd');    // Day of month (e.g., '15')
+        } else { // year
+          return format(date, 'MMM'); // Month abbreviation (e.g., 'Jun')
+        }
+      } catch (e) {
+          console.error("Error formatting date:", dateStr, e);
+          return 'Error Date';
+      }
     };
-    
-    // Group income by date
+
     income.forEach(item => {
       const key = getDateKey(item.date);
-      incomeMap[key] = (incomeMap[key] || 0) + item.amount;
+      if (key !== 'Invalid Date' && key !== 'Error Date') {
+        incomeMap[key] = (incomeMap[key] || 0) + item.amount;
+      }
     });
-    
-    // Group expenses by date
+
     expenses.forEach(item => {
       const key = getDateKey(item.date);
-      expenseMap[key] = (expenseMap[key] || 0) + item.amount;
+       if (key !== 'Invalid Date' && key !== 'Error Date') {
+        expenseMap[key] = (expenseMap[key] || 0) + item.amount;
+      }
     });
-    
-    // Combine data
+
     const keys = Array.from(new Set([...Object.keys(incomeMap), ...Object.keys(expenseMap)]));
-    
-    // For months, ensure the keys are properly sorted
-    if (timeRange === 'year') {
-      const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      keys.sort((a, b) => monthOrder.indexOf(a) - monthOrder.indexOf(b));
-    } else {
-      // For days, sort numerically
-      keys.sort((a, b) => parseInt(a) - parseInt(b));
+
+    // Define sort order based on timeRange
+    if (timeRange === 'week') {
+        // Sort by day of the week (respecting weekStartsOn if needed, but standard order is fine)
+        const dayOrder = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        // Adjust if weekStartsOn=1 (Monday)
+        // const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        keys.sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+    } else if (timeRange === 'year') {
+        const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        keys.sort((a, b) => monthOrder.indexOf(a) - monthOrder.indexOf(b));
+    } else { // month
+        // Sort numerically by day
+        keys.sort((a, b) => parseInt(a) - parseInt(b));
     }
-    
+
     return keys.map(key => ({
       name: key,
       Income: incomeMap[key] || 0,
@@ -187,12 +257,15 @@ const ReportsPage = () => {
 
   const timeSeriesData = getTimeSeriesData();
 
-  // Custom tooltip for charts
+  // --- CustomTooltip and exportData remain the same ---
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-background border rounded-md p-3 shadow-sm">
-          <p className="font-medium">{label}</p>
+          <p className="font-medium">{
+            // Add context to label for week/month view if just day/number
+            (timeRange === 'week' || timeRange === 'month') ? `${label} (${format(start, 'MMM d')} - ${format(end, 'MMM d')})` : label
+          }</p>
           {payload.map((entry: any, index: number) => (
             <p key={`item-${index}`} style={{ color: entry.color }}>
               {entry.name}: {formatCurrency(entry.value)}
@@ -204,29 +277,38 @@ const ReportsPage = () => {
     return null;
   };
 
-  // Add an export function
   const exportData = (data: any[], filename: string) => {
-    // Convert data to CSV
+     if (!data || data.length === 0) {
+      toast({ title: "No data to export", variant: "destructive" });
+      return;
+    }
     const headers = Object.keys(data[0]).join(',');
     const rows = data.map(item => Object.values(item).join(',')).join('\n');
     const csv = `${headers}\n${rows}`;
-    
-    // Create a Blob and download link
-    const blob = new Blob([csv], { type: 'text/csv' });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${filename}.csv`;
+    a.download = `${filename}_${label.replace(/[\s,-]+/g, '_')}.csv`; // Make filename safer
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
+
+  // Determine if there's any data to show
+  const hasIncomeData = income.length > 0;
+  const hasExpensesData = expenses.length > 0;
+  const hasTimeSeriesData = timeSeriesData.length > 0;
+  const hasPieChartData = pieChartData.length > 0;
+
+
   return (
     <DashboardLayout>
       <div className="space-y-8">
-        {/* Page header */}
+        {/* Header */}
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Reports & Analytics</h1>
           <p className="text-muted-foreground">Analyze your financial data and track progress</p>
@@ -234,55 +316,62 @@ const ReportsPage = () => {
 
         {/* Time range selector */}
         <div className="flex items-center justify-between gap-4 p-4 border rounded-lg bg-card shadow-sm">
-          <button 
+           {/* Prev/Next Buttons (remain the same, disable logic is correct) */}
+           <Button
+            variant="ghost"
+            size="icon"
             onClick={() => navigatePeriod('prev')}
-            className="p-2 rounded-md hover:bg-muted transition-colors"
-            aria-label="Previous period"
+            disabled={isFetching}
+            aria-label={`Previous ${timeRange}`} // Dynamic label
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-          
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </Button>
+
           <div className="text-center">
             <p className="text-sm text-muted-foreground">Viewing data for</p>
-            <p className="font-semibold text-lg">{label}</p>
+            <p className="font-semibold text-lg">{label}</p> {/* Label updates automatically */}
           </div>
-          
-          <button 
+
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => navigatePeriod('next')}
-            className="p-2 rounded-md hover:bg-muted transition-colors"
-            aria-label="Next period"
+            disabled={isFetching}
+             aria-label={`Next ${timeRange}`} // Dynamic label
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M6 12L10 8L6 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 12L10 8L6 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </Button>
         </div>
 
         {/* Report tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <div className="flex items-center justify-between mb-4">
-            <TabsList>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-4">
+             <TabsList>
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="expenses">Expenses</TabsTrigger>
               <TabsTrigger value="trends">Trends</TabsTrigger>
             </TabsList>
-            
-            <div className="flex items-center space-x-2">
+
+            <div className="flex items-center space-x-2 w-full sm:w-auto">
               <Label htmlFor="timeRange" className="sr-only">Time Range</Label>
-              <Select
+               <Select
                 value={timeRange}
-                onValueChange={setTimeRange}
+                onValueChange={(value: 'week' | 'month' | 'year') => {
+                  setTimeRange(value);
+                  // Optional: Reset to current date when changing range type for context
+                  setCurrentPeriod(new Date());
+                }}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="Select time range" />
                 </SelectTrigger>
                 <SelectContent>
+                   {/* ADDED This Week option */}
                   <SelectItem value="week">This Week</SelectItem>
                   <SelectItem value="month">This Month</SelectItem>
                   <SelectItem value="year">This Year</SelectItem>
-                  <SelectItem value="custom">Custom Range</SelectItem>
+                  {/* Custom range removed for simplicity, add back if needed */}
+                  {/* <SelectItem value="custom">Custom Range</SelectItem> */}
                 </SelectContent>
               </Select>
             </div>
@@ -290,78 +379,67 @@ const ReportsPage = () => {
 
           {/* Overview tab */}
           <TabsContent value="overview" className="space-y-6">
-            {/* Summary cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Card className="shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardDescription>Total Income</CardDescription>
-                  <CardTitle className="text-2xl text-income">{formatCurrency(totalIncome)}</CardTitle>
-                </CardHeader>
-              </Card>
-              
-              <Card className="shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardDescription>Total Expenses</CardDescription>
-                  <CardTitle className="text-2xl text-expense">{formatCurrency(totalExpenses)}</CardTitle>
-                </CardHeader>
-              </Card>
-              
-              <Card className="shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardDescription>Net Balance</CardDescription>
-                  <CardTitle className={`text-2xl ${balance >= 0 ? 'text-saving' : 'text-expense'}`}>
-                    {formatCurrency(balance)}
-                  </CardTitle>
-                </CardHeader>
-              </Card>
-              
-              <Card className="shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardDescription>Savings Rate</CardDescription>
-                  <CardTitle className={`text-2xl ${parseFloat(savingsRate) >= 0 ? 'text-saving' : 'text-expense'}`}>
-                    {savingsRate}%
-                  </CardTitle>
-                </CardHeader>
-              </Card>
-            </div>
+              {/* Summary cards (remain the same) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                 {/* Conditional rendering for placeholders or actual cards */}
+                  {isFetching && !hasIncomeData && !hasExpensesData ? (
+                    <>
+                      {[...Array(4)].map((_, i) => (
+                        <Card key={i} className="shadow-sm animate-pulse">
+                          <CardHeader className="pb-2">
+                            <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
+                            <div className="h-8 bg-muted rounded w-1/2"></div>
+                          </CardHeader>
+                        </Card>
+                      ))}
+                    </>
+                  ) : (
+                    <>
+                      <Card className="shadow-sm"> <CardHeader className="pb-2"><CardDescription>Total Income</CardDescription><CardTitle className="text-2xl text-income">{formatCurrency(totalIncome)}</CardTitle></CardHeader></Card>
+                      <Card className="shadow-sm"> <CardHeader className="pb-2"><CardDescription>Total Expenses</CardDescription><CardTitle className="text-2xl text-expense">{formatCurrency(totalExpenses)}</CardTitle></CardHeader></Card>
+                      <Card className="shadow-sm"> <CardHeader className="pb-2"><CardDescription>Net Balance</CardDescription><CardTitle className={`text-2xl ${balance >= 0 ? 'text-saving' : 'text-expense'}`}>{formatCurrency(balance)}</CardTitle></CardHeader></Card>
+                      <Card className="shadow-sm"> <CardHeader className="pb-2"><CardDescription>Savings Rate</CardDescription><CardTitle className={`text-2xl ${parseFloat(savingsRate) >= 0 ? 'text-saving' : 'text-expense'}`}>{savingsRate}%</CardTitle></CardHeader></Card>
+                    </>
+                  )}
+              </div>
 
             {/* Income vs Expenses Chart */}
             <Card className="shadow-sm">
               <CardHeader>
                 <CardTitle>Income vs Expenses</CardTitle>
-                <CardDescription>Comparison over time</CardDescription>
+                 {/* Dynamic description */}
+                <CardDescription>Comparison for the selected {timeRange}</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-[350px] w-full">
-                  {loading ? (
-                    <div className="h-full flex items-center justify-center">
-                      <div className="animate-pulse text-muted-foreground">Loading chart...</div>
-                    </div>
-                  ) : timeSeriesData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={timeSeriesData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" />
-                        <YAxis />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend />
-                        <Bar dataKey="Income" fill="#00C49F" />
-                        <Bar dataKey="Expenses" fill="#FF5A5F" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-full flex items-center justify-center">
-                      <p className="text-muted-foreground">No data available for this period</p>
-                    </div>
-                  )}
-                </div>
+                <div className="h-[350px] w-full relative">
+                   {isFetching && hasTimeSeriesData && <ChartLoadingState />}
+                   {isFetching && !hasTimeSeriesData && <ChartLoadingState />}
+                   {!isFetching && !hasTimeSeriesData && <ChartNoDataState message="No income or expense data for this period." />}
+
+                   {hasTimeSeriesData && (
+                     <ResponsiveContainer width="100%" height="100%">
+                       <BarChart data={timeSeriesData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                         <CartesianGrid strokeDasharray="3 3" />
+                         {/* XAxis label depends on timeRange via getTimeSeriesData */}
+                         <XAxis dataKey="name" />
+                         <YAxis />
+                         <Tooltip content={<CustomTooltip />} />
+                         <Legend />
+                         <Bar dataKey="Income" fill="#00C49F" />
+                         <Bar dataKey="Expenses" fill="#FF5A5F" />
+                       </BarChart>
+                     </ResponsiveContainer>
+                   )}
+                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Expenses tab */}
+          {/* Expenses tab (remains the same, pie chart isn't time-based) */}
           <TabsContent value="expenses" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+             {/* ... Expense Pie Chart and Table code ... */}
+             {/* The rendering logic inside should still use hasPieChartData etc. */}
+             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Expense Categories Chart */}
               <Card className="shadow-sm">
                 <CardHeader>
@@ -369,193 +447,106 @@ const ReportsPage = () => {
                   <CardDescription>Breakdown of spending by category</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-[350px] w-full">
-                    {loading ? (
-                      <div className="h-full flex items-center justify-center">
-                        <div className="animate-pulse text-muted-foreground">Loading chart...</div>
-                      </div>
-                    ) : pieChartData.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={pieChartData}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={false}
-                            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                            outerRadius={120}
-                            fill="#8884d8"
-                            dataKey="value"
-                          >
-                            {pieChartData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                            ))}
-                          </Pie>
-                          <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div className="h-full flex items-center justify-center">
-                        <p className="text-muted-foreground">No expense data available for this period</p>
-                      </div>
-                    )}
-                  </div>
+                   <div className="h-[350px] w-full relative">
+                      {isFetching && hasPieChartData && <ChartLoadingState height={350} />}
+                      {isFetching && !hasPieChartData && <ChartLoadingState height={350} />}
+                      {!isFetching && !hasPieChartData && <ChartNoDataState message="No expense data for this period." height={350} />}
+
+                      {hasPieChartData && (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={pieChartData}
+                              cx="50%" cy="50%"
+                              labelLine={false}
+                              label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                              outerRadius={120} fill="#8884d8" dataKey="value"
+                            >
+                              {pieChartData.map((entry, index) => ( <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} /> ))}
+                            </Pie>
+                            <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                             <Legend layout="scrollable" verticalAlign="bottom" align="center" />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      )}
+                   </div>
                 </CardContent>
               </Card>
 
               {/* Expense Categories Table */}
               <Card className="shadow-sm">
-                <CardHeader>
+                 {/* ... Expense Breakdown Card Header ... */}
+                 <CardHeader>
                   <CardTitle>Expense Breakdown</CardTitle>
                   <CardDescription>Detailed view of spending by category</CardDescription>
                 </CardHeader>
-                <CardContent>
-                  {loading ? (
-                    <div className="space-y-4 animate-pulse">
-                      {[...Array(5)].map((_, i) => (
-                        <div key={i} className="flex justify-between p-2">
-                          <div className="h-6 w-24 bg-muted rounded"></div>
-                          <div className="h-6 w-20 bg-muted rounded"></div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : pieChartData.length > 0 ? (
-                    <div className="space-y-4">
-                      {pieChartData.map((category, index) => (
-                        <div key={category.name} className="flex justify-between items-center p-2 rounded-lg border">
-                          <div className="flex items-center">
-                            <div
-                              className="w-3 h-3 rounded-full mr-3"
-                              style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                            ></div>
-                            <span>{category.name}</span>
-                          </div>
-                          <div className="space-x-4 flex items-center">
-                            <span className="text-muted-foreground text-sm">
-                              {((category.value / totalExpenses) * 100).toFixed(1)}%
-                            </span>
-                            <span className="font-medium">{formatCurrency(category.value)}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="h-[350px] flex items-center justify-center">
-                      <p className="text-muted-foreground">No expense data available for this period</p>
-                    </div>
-                  )}
+                <CardContent className="h-[398px] overflow-y-auto"> {/* Match height approx and allow scroll */}
+                   {isFetching && !hasPieChartData && (
+                     <div className="space-y-4 animate-pulse">
+                       {[...Array(5)].map((_, i) => ( /* Skeleton loader */
+                         <div key={i} className="flex justify-between p-2 border rounded-lg"><div className="flex items-center w-full"><div className="w-3 h-3 rounded-full mr-3 bg-muted"></div><div className="h-4 bg-muted rounded w-1/3"></div></div><div className="h-4 bg-muted rounded w-1/4"></div></div>
+                       ))}
+                     </div>
+                   )}
+                   {!isFetching && !hasPieChartData && (
+                      <ChartNoDataState message="No expense data to display." height={200} />
+                   )}
+                   {hasPieChartData && (
+                     <div className="space-y-3">
+                       {pieChartData.map((category, index) => ( /* Actual list */
+                         <div key={category.name} className="flex justify-between items-center p-2 rounded-lg border hover:bg-muted/50 transition-colors"><div className="flex items-center overflow-hidden mr-2"><div className="w-3 h-3 rounded-full mr-3 flex-shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }} aria-hidden="true"></div><span className="truncate" title={category.name}>{category.name}</span></div><div className="space-x-4 flex items-center flex-shrink-0"><span className="text-muted-foreground text-sm w-12 text-right">{totalExpenses > 0 ? ((category.value / totalExpenses) * 100).toFixed(1) : '0.0'}%</span><span className="font-medium w-20 text-right">{formatCurrency(category.value)}</span></div></div>
+                       ))}
+                     </div>
+                   )}
                 </CardContent>
               </Card>
             </div>
           </TabsContent>
 
-          {/* Trends tab */}
+          {/* Trends tab (remains the same, charts adapt via getTimeSeriesData) */}
           <TabsContent value="trends" className="space-y-6">
-            {/* Balance Trend Chart */}
-            <Card className="shadow-sm">
-              <CardHeader>
-                <CardTitle>Balance Trend</CardTitle>
-                <CardDescription>How your net balance has changed over time</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[350px] w-full">
-                  {loading ? (
-                    <div className="h-full flex items-center justify-center">
-                      <div className="animate-pulse text-muted-foreground">Loading chart...</div>
-                    </div>
-                  ) : timeSeriesData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={timeSeriesData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" />
-                        <YAxis />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend />
-                        <Line 
-                          type="monotone" 
-                          dataKey="Balance" 
-                          stroke="#0A84FF" 
-                          strokeWidth={2}
-                          dot={{ r: 4 }}
-                          activeDot={{ r: 6 }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-full flex items-center justify-center">
-                      <p className="text-muted-foreground">No data available for this period</p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+             {/* Balance Trend Chart */}
+              <Card className="shadow-sm">
+                <CardHeader>
+                  <CardTitle>Balance Trend</CardTitle>
+                  <CardDescription>How your net balance changed over the {timeRange}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[350px] w-full relative">
+                    {isFetching && hasTimeSeriesData && <ChartLoadingState />}
+                    {isFetching && !hasTimeSeriesData && <ChartLoadingState />}
+                    {!isFetching && !hasTimeSeriesData && <ChartNoDataState message="No data available to show trend." />}
+                    {hasTimeSeriesData && ( /* Line chart code */
+                       <ResponsiveContainer width="100%" height="100%"><LineChart data={timeSeriesData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip content={<CustomTooltip />} /><Legend /><Line type="monotone" dataKey="Balance" stroke="#0A84FF" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} /></LineChart></ResponsiveContainer>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
 
-            {/* Cumulative Line Chart */}
-            <Card className="shadow-sm">
-              <CardHeader>
-                <CardTitle>Income & Expenses Over Time</CardTitle>
-                <CardDescription>Cumulative view of your financial activity</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[350px] w-full">
-                  {loading ? (
-                    <div className="h-full flex items-center justify-center">
-                      <div className="animate-pulse text-muted-foreground">Loading chart...</div>
-                    </div>
-                  ) : timeSeriesData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={timeSeriesData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" />
-                        <YAxis />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend />
-                        <Line 
-                          type="monotone" 
-                          dataKey="Income" 
-                          stroke="#00C49F" 
-                          strokeWidth={2}
-                          dot={{ r: 4 }}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="Expenses" 
-                          stroke="#FF5A5F" 
-                          strokeWidth={2}
-                          dot={{ r: 4 }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-full flex items-center justify-center">
-                      <p className="text-muted-foreground">No data available for this period</p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+              {/* Income & Expenses Over Time Chart */}
+              <Card className="shadow-sm">
+                <CardHeader>
+                  <CardTitle>Income & Expenses Over Time</CardTitle>
+                  <CardDescription>Progression during the selected {timeRange}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[350px] w-full relative">
+                    {isFetching && hasTimeSeriesData && <ChartLoadingState />}
+                    {isFetching && !hasTimeSeriesData && <ChartLoadingState />}
+                    {!isFetching && !hasTimeSeriesData && <ChartNoDataState message="No income or expense data for trend." />}
+                    {hasTimeSeriesData && ( /* Line chart code */
+                      <ResponsiveContainer width="100%" height="100%"><LineChart data={timeSeriesData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip content={<CustomTooltip />} /><Legend /><Line type="monotone" dataKey="Income" stroke="#00C49F" strokeWidth={2} dot={{ r: 4 }} /><Line type="monotone" dataKey="Expenses" stroke="#FF5A5F" strokeWidth={2} dot={{ r: 4 }} /></LineChart></ResponsiveContainer>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
           </TabsContent>
         </Tabs>
 
-        {/* Export buttons */}
-        <div className="mt-4 flex items-center justify-end gap-4">
-          <Button 
-            variant="outline" 
-            onClick={() => exportData(income, 'income-export')}
-            disabled={loading || income.length === 0}
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Export Income
-          </Button>
-
-          <Button 
-            variant="outline" 
-            onClick={() => exportData(expenses, 'expenses-export')}
-            disabled={loading || expenses.length === 0}
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Export Expenses
-          </Button>
+        {/* Export buttons (remain the same) */}
+         <div className="mt-4 flex flex-col sm:flex-row items-center justify-end gap-4">
+          <Button variant="outline" onClick={() => exportData(income, 'income-export')} disabled={isFetching || !hasIncomeData} aria-disabled={isFetching || !hasIncomeData} title={!hasIncomeData ? "No income data to export" : isFetching ? "Loading data..." : "Export income data"}><Download className="h-4 w-4 mr-2" />Export Income</Button>
+          <Button variant="outline" onClick={() => exportData(expenses, 'expenses-export')} disabled={isFetching || !hasExpensesData} aria-disabled={isFetching || !hasExpensesData} title={!hasExpensesData ? "No expense data to export" : isFetching ? "Loading data..." : "Export expense data"}><Download className="h-4 w-4 mr-2" />Export Expenses</Button>
         </div>
       </div>
     </DashboardLayout>

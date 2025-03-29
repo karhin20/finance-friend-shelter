@@ -7,14 +7,21 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, formatCurrency, formatDate, Income, Expense } from '@/lib/supabase';
 import { BarChart, PieChart, Pie, Bar, XAxis, YAxis, Tooltip, Legend, Cell, ResponsiveContainer } from 'recharts';
-import { ArrowUpRight, TrendingUp, TrendingDown, DollarSign, Plus, ExternalLink } from 'lucide-react';
+import { ArrowUpRight, TrendingUp, TrendingDown, DollarSign, Plus, ExternalLink, Calculator } from 'lucide-react';
+
 
 const Dashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [income, setIncome] = useState<Income[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [income, setIncome] = useState<Income[]>(() => {
+    const cachedIncome = localStorage.getItem('dashboard_income');
+    return cachedIncome ? JSON.parse(cachedIncome) : [];
+  });
+  const [expenses, setExpenses] = useState<Expense[]>(() => {
+    const cachedExpenses = localStorage.getItem('dashboard_expenses');
+    return cachedExpenses ? JSON.parse(cachedExpenses) : [];
+  });
   const [timeframe, setTimeframe] = useState('month');
 
 
@@ -48,6 +55,7 @@ const Dashboard = () => {
 
         if (incomeError) throw incomeError;
         setIncome(incomeData || []);
+        localStorage.setItem('dashboard_income', JSON.stringify(incomeData || []));
 
         // Fetch expenses
         const { data: expensesData, error: expensesError } = await supabase
@@ -59,6 +67,7 @@ const Dashboard = () => {
 
         if (expensesError) throw expensesError;
         setExpenses(expensesData || []);
+        localStorage.setItem('dashboard_expenses', JSON.stringify(expensesData || []));
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
       } finally {
@@ -250,15 +259,27 @@ const Dashboard = () => {
             <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
             <p className="text-muted-foreground">Your financial overview at a glance</p>
           </div>
-          <div className="flex gap-3">
-            <Button onClick={() => navigate('/income')} variant="outline" className="shadow-sm">
-              <Plus className="mr-2 h-4 w-4" />
-              Add Income
-            </Button>
-            <Button onClick={() => navigate('/expenses')}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Expense
-            </Button>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              <Button onClick={() => navigate('/income')} variant="outline" className="shadow-sm flex-1">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Income
+              </Button>
+              <Button onClick={() => navigate('/expenses')} className="flex-1">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Expense
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              <Button onClick={() => navigate('/budget')} variant="outline" className="shadow-sm flex-1">
+                <Calculator className="mr-2 h-4 w-4" />
+                Budget
+              </Button>
+              <Button onClick={() => navigate('/reports')} variant="outline" className="shadow-sm flex-1">
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Reports
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -513,7 +534,7 @@ const Dashboard = () => {
             ) : recentTransactions.length > 0 ? (
               <div className="space-y-4">
                 {recentTransactions.map((transaction) => (
-                  <div key={transaction.id} className="flex justify-between items-center p-2 rounded-lg hover:bg-muted/50 transition-colors">
+                  <div key={`${transaction.id}-${transaction.date}`} className="flex justify-between items-center p-2 rounded-lg hover:bg-muted/50 transition-colors">
                     <div className="flex items-center space-x-4">
                       <div className={`h-10 w-10 rounded-full flex items-center justify-center ${transaction.type === 'income' ? 'bg-income/10 text-income' : 'bg-expense/10 text-expense'}`}>
                         {transaction.type === 'income' ? (
@@ -567,7 +588,7 @@ const Dashboard = () => {
               <div>
                 <h4 className="font-medium text-sm">Top Income Sources</h4>
                 {topIncomeSources.map(source => (
-                  <div key={source.description} className="flex justify-between mt-2">
+                  <div key={`${source.description}-${source.amount}`} className="flex justify-between mt-2">
                     <span className="text-sm">{source.description || 'Unnamed'}</span>
                     <span className="text-sm font-medium">{formatCurrency(source.amount)}</span>
                   </div>
@@ -577,7 +598,7 @@ const Dashboard = () => {
               <div>
                 <h4 className="font-medium text-sm">Top Expense Categories</h4>
                 {topExpenseCategories.map(category => (
-                  <div key={category.name} className="flex justify-between mt-2">
+                  <div key={`${category.name}-${category.amount}`} className="flex justify-between mt-2">
                     <span className="text-sm">{category.name}</span>
                     <span className="text-sm font-medium">{formatCurrency(category.amount)}</span>
                   </div>

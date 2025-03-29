@@ -9,7 +9,8 @@ import {
   LogOut,
   Menu,
   X,
-  PiggyBank
+  PiggyBank,
+  Calculator
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -29,6 +30,7 @@ const navItems: NavItem[] = [
   { icon: <Receipt className="h-4 w-4" />, label: 'Expenses', path: '/expenses' },
   { icon: <PiggyBank className="h-4 w-4" />, label: 'Savings', path: '/savings' },
   { icon: <BarChart3 className="h-4 w-4" />, label: 'Reports', path: '/reports' },
+  { icon: <Calculator className="h-4 w-4" />, label: 'Budget', path: '/budget' },
   { icon: <Settings className="h-4 w-4" />, label: 'Settings', path: '/settings' },
 ];
 
@@ -79,9 +81,9 @@ export function Navbar() {
         <div className="flex items-center">
           <Link to="/dashboard" className="flex items-center gap-2 mr-8">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-semibold">F</span>
+              <span className="text-primary-foreground font-semibold">D</span>
             </div>
-            <span className="font-semibold text-lg">Finance</span>
+            <span className="font-semibold text-lg">Diligence Finance</span>
           </Link>
 
           {/* Desktop Navigation */}
@@ -148,9 +150,8 @@ export function Navbar() {
             onClick={() => setIsOpen(false)}
           />
           
-          {/* Nav menu - completely solid, removed header with "Menu" text */}
+          {/* Nav menu */}
           <div className="absolute right-0 top-0 h-full w-3/4 max-w-xs bg-white shadow-xl">
-            {/* Close button at the top right */}
             <div className="flex justify-end p-4">
               <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
                 <X className="h-5 w-5" />
@@ -158,7 +159,7 @@ export function Navbar() {
             </div>
             
             {/* Navigation items */}
-            <nav className="p-4 pt-0">
+            <nav className="p-4">
               {navItems.map((item) => (
                 <Link
                   key={item.path}

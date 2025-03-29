@@ -13,6 +13,7 @@ import Savings from "./pages/Savings";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import DbSetup from "./pages/DbSetup";
+import Budget from "./pages/Budget";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -33,6 +34,7 @@ const App = () => (
               <Route path="/savings" element={<Savings />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/budget" element={<Budget />} />
               <Route path="/db-setup" element={<DbSetup />} />
               <Route path="*" element={<NotFound />} />
             </Routes>

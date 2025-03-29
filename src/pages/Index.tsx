@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -60,9 +59,9 @@ const Index = () => {
           <div className="max-w-xl mx-auto md:mx-0">
             <div className="flex items-center gap-2 mb-8">
               <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
-                <span className="text-primary-foreground font-semibold text-lg">F</span>
+                <span className="text-primary-foreground font-semibold text-lg">D</span>
               </div>
-              <h1 className="text-2xl font-bold">Finance</h1>
+              <h1 className="text-2xl font-bold">Diligence Finance</h1>
             </div>
             
             <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
@@ -222,7 +221,7 @@ const Index = () => {
       <footer className="py-6 md:py-0 border-t">
         <div className="container flex flex-col items-center justify-between gap-4 md:h-16 md:flex-row">
           <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} Finance App. All rights reserved.
+            © {new Date().getFullYear()} Diligence Finance. All rights reserved.
           </p>
         </div>
       </footer>
