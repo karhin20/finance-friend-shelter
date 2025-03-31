@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { LogOut, User, KeyRound, Bell, FileText, Shield, AlertTriangle } from 'lucide-react';
 
 const SettingsPage = () => {
-  const { user, signOut } = useAuth();
+  const { user, signOut, deleteAccount } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
@@ -153,23 +153,7 @@ const SettingsPage = () => {
 
     setIsDeletingAccount(true);
     try {
-      // First delete user data
-      await Promise.all([
-        supabase.from('income').delete().eq('user_id', user.id),
-        supabase.from('expenses').delete().eq('user_id', user.id)
-      ]);
-
-      // Then delete the user account
-      const { error } = await supabase.auth.admin.deleteUser(user.id);
-
-      if (error) throw error;
-
-      toast({
-        title: 'Account deleted',
-        description: 'Your account and all data have been permanently deleted.',
-      });
-
-      signOut();
+      await deleteAccount();
     } catch (error: any) {
       console.error('Error deleting account:', error);
       toast({

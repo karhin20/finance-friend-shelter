@@ -93,49 +93,49 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signOut = async () => {
-    console.log("signOut function called");
     let signOutAttempted = false;
     try {
       setLoading(true);
-      console.log("Attempting supabase.auth.signOut()");
+      // Try with local scope first (which is the default)
       const { error } = await supabase.auth.signOut();
-      signOutAttempted = true;
-      console.log("supabase.auth.signOut() completed");
+      signOutAttempted = true; // Mark that we attempted the sign out
 
       if (error) {
-        console.error("Sign out error (API failure), attempting fallback:", error);
-        localStorage.removeItem('sb-hqgkctyvbbaxjyjhvchy-auth-token');
+        console.error("Sign out error, attempting fallback:", error);
+        // Clear local storage as a fallback
+        localStorage.removeItem('sb-hqgkctyvbbaxjyjhvchy-auth-token'); // Ensure this key matches exactly what Supabase uses
+
+        // Reset application state immediately
         setSession(null);
         setUser(null);
+
+        // Rethrow or handle specifically if needed, but navigation will happen in finally
+        // For now, we log it, but don't show a toast here as navigation is the primary goal
       } else {
-        console.log("Successful supabase.auth.signOut() - state cleared");
-        setSession(null);
-        setUser(null);
+         // Successful sign out, ensure state is cleared (onAuthStateChange might handle this too, but explicit is safer)
+         setSession(null);
+         setUser(null);
       }
     } catch (error: any) {
-      console.error("signOut catch block - Sign out process failed (likely offline):", error);
-      localStorage.removeItem('sb-hqgkctyvbbaxjyjhvchy-auth-token');
-      setSession(null);
-      setUser(null);
-      if (!signOutAttempted) {
-        toast({
-          title: "Offline Sign Out",
-          description: "Signed out locally, but couldn't reach the server to confirm. You're now logged out.",
-          variant: "default",
-        });
-      } else {
-        toast({
-          title: "Sign Out Issue",
-          description: "Problem communicating with the server during sign out. You have been logged out locally.",
-          variant: "destructive",
-        });
-      }
-
+      // Catch errors from the try block (including the re-thrown error or fetch errors)
+      console.error("Sign out process failed:", error);
+      // Potentially show a toast, but navigation is key
+       toast({
+         title: "Sign Out Issue",
+         description: "Could not properly communicate sign-out with the server. You have been logged out locally.",
+         variant: "destructive", // Or 'default' if it's just informational
+       });
+       // Ensure state is cleared even if API call fails catastrophically
+       if (!signOutAttempted) { // If the API call itself failed before returning an error object
+           localStorage.removeItem('sb-hqgkctyvbbaxjyjhvchy-auth-token');
+           setSession(null);
+           setUser(null);
+       }
     } finally {
       setLoading(false);
-      console.log("signOut finally block - Navigating to /");
+      // Navigate to home route regardless of success or failure, after state is cleared
+      console.log("Navigating to / after sign out attempt.");
       navigate('/', { replace: true });
-      console.log("Navigation to / completed");
     }
   };
 
