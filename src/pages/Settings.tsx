@@ -167,6 +167,28 @@ const SettingsPage = () => {
     }
   };
 
+  // Add a wrapper for sign out to handle errors locally
+  const handleSignOutAll = async () => {
+    setLoading(true); // Optionally indicate loading state
+    try {
+      await signOut();
+      toast({
+        title: 'Signed Out',
+        description: 'You have been signed out from all sessions.',
+      });
+      // No need to manually clear state here, AuthContext listener handles it
+    } catch (error: any) {
+      // Error is already logged in AuthContext's signOut
+      toast({
+        title: 'Sign Out Failed',
+        description: error.message || 'Could not sign out from all devices. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false); // Stop loading indicator
+    }
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-8">
@@ -319,9 +341,9 @@ const SettingsPage = () => {
                 </p>
               </CardContent>
               <CardFooter>
-                <Button variant="outline" onClick={signOut} className="flex items-center gap-2">
+                <Button variant="outline" onClick={handleSignOutAll} className="flex items-center gap-2" disabled={loading}>
                   <LogOut className="h-4 w-4" />
-                  Sign out from all devices
+                  {loading ? "Signing out..." : "Sign out from all devices"}
                 </Button>
               </CardFooter>
             </Card>
