@@ -106,10 +106,28 @@ const Dashboard = () => {
     // Format based on timeframe
     const getDateKey = (dateStr: string) => {
       const date = new Date(dateStr);
+      
       if (timeframe === 'week') {
-        return `Day ${date.getDate()}`;
+        // Show day of week (Sun, Mon, etc.)
+        const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        return daysOfWeek[date.getDay()];
       } else if (timeframe === 'month') {
-        return `Week ${Math.ceil(date.getDate() / 7)}`;
+        // Get the day of week (0 = Sunday, 6 = Saturday)
+        const dayOfWeek = date.getDay();
+        // Calculate the date of the previous Sunday (or the same date if it's already Sunday)
+        const sunday = new Date(date);
+        sunday.setDate(date.getDate() - dayOfWeek);
+        // Format as "DD MMM - DD MMM"
+        const saturdayDate = new Date(sunday);
+        saturdayDate.setDate(sunday.getDate() + 6);
+        
+        // Format the dates as "D MMM"
+        const formatDate = (d: Date) => {
+          const day = d.getDate();
+          const month = d.toLocaleString('default', { month: 'short' }).toUpperCase();
+          return `${day} ${month}`;
+        };
+        return `${formatDate(sunday)} - ${formatDate(saturdayDate)}`;
       } else {
         return date.toLocaleString('default', { month: 'short' });
       }
@@ -130,7 +148,35 @@ const Dashboard = () => {
     // Combine into format needed for chart
     const keys = [...new Set([...Object.keys(incomeMap), ...Object.keys(expenseMap)])];
     
-    return keys.sort().map(key => ({
+    // Sort the keys appropriately by timeframe
+    const sortedKeys = [...keys].sort((a, b) => {
+      if (timeframe === 'week') {
+        // Sort by day of week (Sun, Mon, Tue, etc.)
+        const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        return daysOfWeek.indexOf(a) - daysOfWeek.indexOf(b);
+      } else if (timeframe === 'month') {
+        // Extract the dates from "D MMM - D MMM" and sort by the start date
+        const getStartDate = (weekStr: string) => {
+          const dateStr = weekStr.split(' - ')[0];
+          const day = parseInt(dateStr.split(' ')[0]);
+          const month = dateStr.split(' ')[1];
+          const monthIndex = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'].indexOf(month);
+          // Use current year (this is fine for sorting within a month)
+          return new Date(new Date().getFullYear(), monthIndex, day);
+        };
+        // Sort from earliest to latest
+        return getStartDate(a).getTime() - getStartDate(b).getTime();
+      } else {
+        // For year view, sort months chronologically
+        const monthOrder = {
+          'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+          'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+        };
+        return (monthOrder[a as keyof typeof monthOrder] || 0) - (monthOrder[b as keyof typeof monthOrder] || 0);
+      }
+    });
+    
+    return sortedKeys.map(key => ({
       name: key,
       Income: incomeMap[key] || 0,
       Expenses: expenseMap[key] || 0
@@ -447,7 +493,9 @@ const Dashboard = () => {
             <CardHeader>
               <CardTitle>Income vs Expenses</CardTitle>
               <CardDescription>
-                {timeframe === 'week' ? 'Daily' : timeframe === 'month' ? 'Weekly' : 'Monthly'} comparison
+                {timeframe === 'week' ? 'Daily breakdown by day of week' : 
+                 timeframe === 'month' ? 'Weekly breakdown (Sun-Sat)' : 
+                 'Monthly comparison'}
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-2">
@@ -459,7 +507,10 @@ const Dashboard = () => {
                 ) : chartData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                      <XAxis dataKey="name" />
+                      <XAxis 
+                        dataKey="name" 
+                        tick={{ fontSize: 11, fontWeight: 600 }}
+                      />
                       <YAxis />
                       <Tooltip formatter={(value) => formatCurrency(Number(value))} />
                       <Legend />
