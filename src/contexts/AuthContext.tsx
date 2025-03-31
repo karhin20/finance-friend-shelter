@@ -100,45 +100,63 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signOut = async () => {
+    let isMounted = true; // Local mount check for this specific async operation
+
     try {
       setLoading(true);
       const { error } = await supabase.auth.signOut();
 
       if (error) {
         console.error("Sign out error:", error);
-        // Clear local storage as a fallback - No change needed here, but ensure state updates below are handled if they were async
-        localStorage.removeItem('sb-hqgkctyvbbaxjyjhvchy-auth-token'); // Consider if this key is correct/dynamic
+        // Clear local storage as a fallback
+        localStorage.removeItem('sb-hqgkctyvbbaxjyjhvchy-auth-token'); // Ensure this key is correct
 
-        // Reset application state directly (synchronous, less likely to cause issues)
-        setSession(null);
-        setUser(null);
+        // Reset application state directly on error (if appropriate for your UX)
+        // Consider if you want to clear state even if sign-out technically failed on the server
+        if (isMounted) {
+             setSession(null);
+             setUser(null);
+        }
 
-        // Still throw the error to show it to the user
+        // Still throw the error to show it to the user / allow component handling
         throw error;
       }
-      // No need to explicitly set session/user to null here on successful signout,
-      // the onAuthStateChange listener should handle this automatically.
-      // If the listener doesn't fire reliably or quickly enough, you might reconsider,
-      // but usually, it's best practice to rely on the listener.
+
+      // Explicitly clear session/user state on successful sign-out
+      // This makes the state change immediate and less dependent on the listener
+      if (isMounted) {
+          setSession(null);
+          setUser(null);
+      }
+      // The onAuthStateChange listener will still fire, but it will just be setting
+      // the state to null again, which is harmless.
+
     } catch (error: any) {
       console.error("Sign out failed:", error);
+      // Display toast on failure
       toast({
         title: "Error signing out",
-        description: "Please try refreshing the page and signing out again.",
+        description: error.message || "Please try refreshing the page and signing out again.", // Updated error message slightly
         variant: "destructive",
       });
+      // Optionally re-throw if components need to react to the error beyond the toast
+      // throw error; // Decide if re-throwing is necessary here
     } finally {
-      // setLoading(false) is synchronous relative to the try/catch,
-      // but if signOut itself caused an unmount *before* finally,
-      // it could theoretically error. However, this is much less likely
-      // than the async callbacks in useEffect. Adding a mounted check
-      // here would be overly defensive unless proven necessary.
-      setLoading(false);
+      // Ensure loading is always set to false eventually
+      if (isMounted) {
+         setLoading(false);
+      }
     }
+
+    // Cleanup function for the local mount check
+    return () => {
+        isMounted = false;
+    };
   };
 
   // Add the deleteAccount function
   const deleteAccount = async () => {
+    let isMounted = true; // Add mount check
     setLoading(true);
     try {
       // !!! IMPORTANT !!!
@@ -169,8 +187,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Re-throw the error so the calling component knows it failed
       throw error;
     } finally {
-      setLoading(false);
+      if (isMounted) { // Check before setting state
+         setLoading(false);
+      }
     }
+    // Cleanup for mount check
+    return () => {
+        isMounted = false;
+    };
   };
 
   return (
