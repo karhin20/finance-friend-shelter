@@ -250,15 +250,15 @@ const Dashboard = () => {
   const financialHealth = useMemo(getFinancialHealthStatus, [recentTransactions, savingsRatio, categoryDiversity, consistencyScore]);
 
   // Add more detailed financial analytics
-  const topIncomeSources = income.map(item => ({
-    description: item.category,
+  const topIncomeSources = income?.map(item => ({
+    description: item.category || 'Income',
     amount: item.amount
-  }));
+  })) || [];
 
-  const topExpenseCategories = expenses.map(item => ({
-    name: item.category,
+  const topExpenseCategories = expenses?.map(item => ({
+    name: item.category || 'Uncategorized',
     amount: item.amount
-  }));
+  })) || [];
 
   return (
     <DashboardLayout>
@@ -482,7 +482,7 @@ const Dashboard = () => {
                         fill="#8884d8"
                         dataKey="value"
                       >
-                        {pieChartData.map((entry, index) => (
+                        {pieChartData && pieChartData.length > 0 && pieChartData.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
@@ -534,7 +534,7 @@ const Dashboard = () => {
               </div>
             ) : recentTransactions.length > 0 ? (
               <div className="space-y-4">
-                {recentTransactions.map((transaction) => (
+                {recentTransactions && recentTransactions.map((transaction) => (
                   <div key={`${transaction.id}-${transaction.date}`} className="flex justify-between items-center p-2 rounded-lg hover:bg-muted/50 transition-colors">
                     <div className="flex items-center space-x-4">
                       <div className={`h-10 w-10 rounded-full flex items-center justify-center ${transaction.type === 'income' ? 'bg-income/10 text-income' : 'bg-expense/10 text-expense'}`}>
@@ -588,7 +588,7 @@ const Dashboard = () => {
             <div className="space-y-4">
               <div>
                 <h4 className="font-medium text-sm">Top Income Sources</h4>
-                {topIncomeSources.map(source => (
+                {topIncomeSources && topIncomeSources.length > 0 && topIncomeSources.map(source => (
                   <div key={`${source.description}-${source.amount}`} className="flex justify-between mt-2">
                     <span className="text-sm">{source.description || 'Unnamed'}</span>
                     <span className="text-sm font-medium">{formatCurrency(source.amount)}</span>
@@ -598,7 +598,7 @@ const Dashboard = () => {
               
               <div>
                 <h4 className="font-medium text-sm">Top Expense Categories</h4>
-                {topExpenseCategories.map(category => (
+                {topExpenseCategories && topExpenseCategories.length > 0 && topExpenseCategories.map(category => (
                   <div key={`${category.name}-${category.amount}`} className="flex justify-between mt-2">
                     <span className="text-sm">{category.name}</span>
                     <span className="text-sm font-medium">{formatCurrency(category.amount)}</span>
