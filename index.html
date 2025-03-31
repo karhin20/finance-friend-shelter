@@ -2,51 +2,16 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Diligence Finance</title>
-    <meta name="description" content="Finance management application" />
-    <meta name="author" content="Kofi Arhin" />
-
-    <meta property="og:title" content="Diligence Finance" />
-    <meta property="og:description" content="Manage your finances effectively" />
-    <meta property="og:type" content="website" />
-    <meta property="og:image" content="/icons/icon-512x512.png" />
-
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:image" content="/icons/icon-512x512.png" />
-    
-    <!-- PWA related meta tags -->
     <meta name="theme-color" content="#4f46e5" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Diligence Finance" />
-    
-    <!-- PWA icons -->
-    <link rel="icon" type="image/png" sizes="196x196" href="/icons/favicon-196.png" />
-    <link rel="apple-touch-icon" href="/icons/apple-icon-180.png" />
-    
-    <!-- PWA manifest -->
+    <meta name="description" content="Diligence Finance - Personal finance management app" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
+    <title>Diligence Finance</title>
   </head>
-
   <body>
     <div id="root"></div>
-    <!-- Service Worker Registration -->
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
-            .then(registration => {
-              console.log('Service Worker registered with scope:', registration.scope);
-            })
-            .catch(error => {
-              console.error('Service Worker registration failed:', error);
-              // If service worker fails, the app will still work without offline capabilities
-            });
-        });
-      }
-    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

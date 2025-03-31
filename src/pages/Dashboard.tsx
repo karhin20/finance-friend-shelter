@@ -143,14 +143,28 @@ const Dashboard = () => {
   const COLORS = ['#0A84FF', '#00C49F', '#FF5A5F', '#FFBB28', '#AF52DE', '#FF9500', '#5856D6'];
 
   // Recent transactions (combined and sorted)
-  const recentTransactions = [...income.map(item => ({
-    ...item,
-    type: 'income',
-    category: 'Income' // Add a default category for income items
-  })), ...expenses.map(item => ({
-    ...item,
-    type: 'expense'
-  }))].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+  const recentTransactions = useMemo(() => {
+    try {
+      if (!income || !income.length || !expenses || !expenses.length) {
+        return [];
+      }
+      
+      return [
+        ...(income || []).map(item => ({
+          ...item,
+          type: 'income',
+          category: 'Income' // Add a default category for income items
+        })), 
+        ...(expenses || []).map(item => ({
+          ...item,
+          type: 'expense'
+        }))
+      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+    } catch (error) {
+      console.error('Error processing transactions:', error);
+      return [];
+    }
+  }, [income, expenses]);
 
   // Improved implementation
   const isCurrentMonth = (dateString: string) => {
@@ -186,17 +200,26 @@ const Dashboard = () => {
     : 0;
 
   // Calculate consistency - how regularly they're tracking finances
-  const oldestTransaction = recentTransactions.length > 0 
-    ? new Date(Math.min(...recentTransactions.map(t => new Date(t.date).getTime())))
-    : new Date();
+  const oldestTransaction = useMemo(() => {
+    try {
+      if (!recentTransactions || recentTransactions.length === 0) {
+        return new Date();
+      }
+      return new Date(Math.min(...recentTransactions.map(t => new Date(t.date).getTime())));
+    } catch (error) {
+      console.error('Error calculating oldest transaction:', error);
+      return new Date();
+    }
+  }, [recentTransactions]);
+
   const daysSinceFirst = Math.max(1, Math.floor((new Date().getTime() - oldestTransaction.getTime()) / (1000 * 60 * 60 * 24)));
-  const avgTransactionsPerDay = recentTransactions.length / daysSinceFirst;
+  const avgTransactionsPerDay = recentTransactions && recentTransactions.length > 0 ? recentTransactions.length / daysSinceFirst : 0;
   const consistencyScore = Math.min(avgTransactionsPerDay * 10, 100);
 
   // Then update the getFinancialHealthStatus function
   const getFinancialHealthStatus = () => {
-    if (recentTransactions.length === 0) 
-      return { status: 'neutral', message: 'Not enough data yet', score: 0 };
+    if (!recentTransactions || recentTransactions.length === 0) 
+      return { status: 'neutral', message: 'Not enough data yet', score: 0, advice: [] };
 
     // Calculate overall financial health score (weighted average)
     const weights = { savings: 0.5, diversity: 0.3, consistency: 0.2 };
@@ -374,41 +397,41 @@ const Dashboard = () => {
                 <div className="flex mb-2 items-center justify-between">
                   <div>
                     <span className={`text-xl font-semibold inline-block ${
-                      financialHealth.status === 'excellent' ? 'text-green-500' :
-                      financialHealth.status === 'good' ? 'text-blue-500' :
-                      financialHealth.status === 'fair' ? 'text-yellow-500' :
+                      financialHealth && financialHealth.status === 'excellent' ? 'text-green-500' :
+                      financialHealth && financialHealth.status === 'good' ? 'text-blue-500' :
+                      financialHealth && financialHealth.status === 'fair' ? 'text-yellow-500' :
                       'text-red-500'
                     }`}>
-                      {financialHealth.status === 'excellent' ? 'Excellent' :
-                       financialHealth.status === 'good' ? 'Good' :
-                       financialHealth.status === 'fair' ? 'Fair' :
+                      {financialHealth && financialHealth.status === 'excellent' ? 'Excellent' :
+                       financialHealth && financialHealth.status === 'good' ? 'Good' :
+                       financialHealth && financialHealth.status === 'fair' ? 'Fair' :
                        'Needs Attention'}
                     </span>
                   </div>
                   <div className="text-right">
                     <span className="text-sm font-semibold inline-block text-muted-foreground">
-                      Score: {financialHealth.score}/100
+                      Score: {financialHealth ? financialHealth.score : 0}/100
                     </span>
                   </div>
                 </div>
                 <div className="flex h-2 overflow-hidden rounded bg-muted/30">
-                  <div style={{ width: `${financialHealth.score}%` }} 
+                  <div style={{ width: `${financialHealth ? financialHealth.score : 0}%` }} 
                     className={`${
-                      financialHealth.status === 'excellent' ? 'bg-green-500' :
-                      financialHealth.status === 'good' ? 'bg-blue-500' :
-                      financialHealth.status === 'fair' ? 'bg-yellow-500' :
+                      financialHealth && financialHealth.status === 'excellent' ? 'bg-green-500' :
+                      financialHealth && financialHealth.status === 'good' ? 'bg-blue-500' :
+                      financialHealth && financialHealth.status === 'fair' ? 'bg-yellow-500' :
                       'bg-red-500'
                     }`}>
                   </div>
                 </div>
               </div>
               
-              <p className="text-muted-foreground">{financialHealth.message}</p>
+              <p className="text-muted-foreground">{financialHealth ? financialHealth.message : 'Loading financial health data...'}</p>
               
               <div className="space-y-2">
                 <h4 className="text-sm font-medium">Suggestions for Improvement:</h4>
                 <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
-                  {financialHealth.advice.map((item, index) => (
+                  {financialHealth && financialHealth.advice && financialHealth.advice.map((item, index) => (
                     <li key={index}>{item}</li>
                   ))}
                 </ul>
