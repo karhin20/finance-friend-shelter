@@ -662,8 +662,8 @@ const Dashboard = () => {
             <div className="space-y-4">
               <div>
                 <h4 className="font-medium text-sm">Top Income Sources</h4>
-                {topIncomeSources && topIncomeSources.length > 0 && topIncomeSources.map(source => (
-                  <div key={`${source.description}-${source.amount}`} className="flex justify-between mt-2">
+                {topIncomeSources && topIncomeSources.length > 0 && topIncomeSources.map((source, index) => (
+                  <div key={`income-${source.description}-${index}`} className="flex justify-between mt-2">
                     <span className="text-sm">{source.description || 'Unnamed'}</span>
                     <span className="text-sm font-medium">{formatCurrency(source.amount)}</span>
                   </div>
@@ -672,8 +672,8 @@ const Dashboard = () => {
               
               <div>
                 <h4 className="font-medium text-sm">Top Expense Categories</h4>
-                {topExpenseCategories && topExpenseCategories.length > 0 && topExpenseCategories.map(category => (
-                  <div key={`${category.name}-${category.amount}`} className="flex justify-between mt-2">
+                {topExpenseCategories && topExpenseCategories.length > 0 && topExpenseCategories.map((category, index) => (
+                  <div key={`expense-${category.name}-${index}`} className="flex justify-between mt-2">
                     <span className="text-sm">{category.name}</span>
                     <span className="text-sm font-medium">{formatCurrency(category.amount)}</span>
                   </div>

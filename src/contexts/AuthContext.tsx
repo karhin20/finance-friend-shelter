@@ -1,5 +1,5 @@
-
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
 import { useToast } from '@/hooks/use-toast';
@@ -20,6 +20,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     // Get initial session
@@ -92,18 +93,49 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signOut = async () => {
+    console.log("signOut function called");
+    let signOutAttempted = false;
     try {
       setLoading(true);
+      console.log("Attempting supabase.auth.signOut()");
       const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      signOutAttempted = true;
+      console.log("supabase.auth.signOut() completed");
+
+      if (error) {
+        console.error("Sign out error (API failure), attempting fallback:", error);
+        localStorage.removeItem('sb-hqgkctyvbbaxjyjhvchy-auth-token');
+        setSession(null);
+        setUser(null);
+      } else {
+        console.log("Successful supabase.auth.signOut() - state cleared");
+        setSession(null);
+        setUser(null);
+      }
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      console.error("signOut catch block - Sign out process failed (likely offline):", error);
+      localStorage.removeItem('sb-hqgkctyvbbaxjyjhvchy-auth-token');
+      setSession(null);
+      setUser(null);
+      if (!signOutAttempted) {
+        toast({
+          title: "Offline Sign Out",
+          description: "Signed out locally, but couldn't reach the server to confirm. You're now logged out.",
+          variant: "default",
+        });
+      } else {
+        toast({
+          title: "Sign Out Issue",
+          description: "Problem communicating with the server during sign out. You have been logged out locally.",
+          variant: "destructive",
+        });
+      }
+
     } finally {
       setLoading(false);
+      console.log("signOut finally block - Navigating to /");
+      navigate('/', { replace: true });
+      console.log("Navigation to / completed");
     }
   };
 
