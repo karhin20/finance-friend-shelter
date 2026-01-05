@@ -10,6 +10,8 @@ type AuthContextType = {
   signUp: (email: string, password: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
+  updatePassword: (password: string) => Promise<void>;
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>; // Add deleteAccount type
   loading: boolean;
@@ -125,6 +127,52 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const resetPassword = async (email: string) => {
+    try {
+      setLoading(true);
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) throw error;
+      toast({
+        title: "Reset Link Sent",
+        description: "Check your email for the password reset link.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send reset link",
+        variant: "destructive",
+      });
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updatePassword = async (password: string) => {
+    try {
+      setLoading(true);
+      const { error } = await supabase.auth.updateUser({ password });
+
+      if (error) throw error;
+      toast({
+        title: "Password Updated",
+        description: "Your password has been changed successfully.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update password",
+        variant: "destructive",
+      });
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const signOut = async () => {
     let isMounted = true; // Local mount check for this specific async operation
 
@@ -215,7 +263,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, signUp, signIn, signInWithGoogle, signOut, deleteAccount, loading }}>
+    <AuthContext.Provider value={{ session, user, signUp, signIn, signInWithGoogle, resetPassword, updatePassword, signOut, deleteAccount, loading }}>
       {children}
     </AuthContext.Provider>
   );

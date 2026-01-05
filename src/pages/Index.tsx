@@ -5,13 +5,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SocialAuthButtons } from '@/components/SocialAuthButtons';
+import { Eye, EyeOff } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const Index = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
-  const { signIn, signUp, user } = useAuth();
+  const [showPassword, setShowPassword] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetSent, setResetSent] = useState(false);
+  const { signIn, signUp, resetPassword, user } = useAuth();
   const navigate = useNavigate();
 
   // Redirect if user is already logged in
@@ -117,7 +123,6 @@ const Index = () => {
                     <Input
                       id="email"
                       type="email"
-                      placeholder="name@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
@@ -128,20 +133,32 @@ const Index = () => {
                     <div className="flex items-center justify-between">
                       <Label htmlFor="password">Password</Label>
                       {!isSignUp && (
-                        <a href="#" className="text-sm text-primary hover:underline font-medium" tabIndex={-1}>
+                        <button
+                          type="button"
+                          onClick={() => setShowResetDialog(true)}
+                          className="text-sm text-primary hover:underline font-medium"
+                        >
                           Forgot password?
-                        </a>
+                        </button>
                       )}
                     </div>
-                    <Input
-                      id="password"
-                      type="password"
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      className="bg-background h-11"
-                    />
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        className="bg-background h-11 pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                     {isSignUp && (
                       <p className="text-xs text-muted-foreground">
                         Must be at least 6 characters
@@ -183,6 +200,79 @@ const Index = () => {
           </div>
         </div>
       </div>
+
+      {/* Password Reset Dialog */}
+      <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <DialogContent className="sm:max-w-[425px] rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold">Reset Password</DialogTitle>
+            <DialogDescription>
+              {resetSent
+                ? "Check your email for the password reset link."
+                : "Enter your email address and we'll send you a link to reset your password."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {!resetSent ? (
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              if (!resetEmail) return;
+
+              try {
+                await resetPassword(resetEmail);
+                setResetSent(true);
+              } catch (error) {
+                console.error('Password reset error:', error);
+              }
+            }} className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="reset-email">Email</Label>
+                <Input
+                  id="reset-email"
+                  type="email"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  required
+                  className="h-11"
+                />
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowResetDialog(false);
+                    setResetEmail('');
+                    setResetSent(false);
+                  }}
+                  className="flex-1 h-11 rounded-2xl"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1 h-11 rounded-2xl"
+                >
+                  Send Reset Link
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <div className="space-y-4 mt-4">
+              <Button
+                onClick={() => {
+                  setShowResetDialog(false);
+                  setResetEmail('');
+                  setResetSent(false);
+                }}
+                className="w-full h-11 rounded-2xl"
+              >
+                Close
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

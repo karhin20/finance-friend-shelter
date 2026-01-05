@@ -9,6 +9,7 @@ import { FinanceProvider } from "@/contexts/FinanceContext";
 import { CurrencyProvider } from "@/contexts/CurrencyContext";
 import { ThemeProvider } from "@/components/theme-provider";
 import Index from "./pages/Index";
+import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import Income from "./pages/Income";
 import Expenses from "./pages/Expenses";
@@ -84,6 +85,7 @@ const App = () => {
                   <BrowserRouter>
                     <Routes>
                       <Route path="/" element={<Index />} />
+                      <Route path="/reset-password" element={<ResetPassword />} />
                       <Route path="/dashboard" element={<Dashboard />} />
                       <Route path="/income" element={<Income />} />
                       <Route path="/expenses" element={<Expenses />} />

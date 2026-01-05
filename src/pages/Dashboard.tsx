@@ -206,20 +206,44 @@ const Dashboard = () => {
   const consistencyScore = Math.min(avgTransactionsPerDay * 10, 100);
 
   const getFinancialHealthStatus = useCallback(() => {
-    // Recalculate health score using potentially updated metrics
-    const weights = { savings: 0.5, diversity: 0.3, consistency: 0.2 };
-    const healthScore = (savingsRatio * weights.savings) + (categoryDiversity * weights.diversity) + (consistencyScore * weights.consistency);
+    // Recalculate health score with more balanced weights
+    // New scoring system:
+    // - Savings Rate: 40% (important but not overwhelming)
+    // - Spending Control: 30% (whether you're living within means)
+    // - Consistency: 20% (regular tracking)
+    // - Category Diversity: 10% (nice to have for insights)
+
+    // Calculate spending control score (0-100)
+    // Rewards positive balance, penalizes overspending
+    let spendingControlScore = 0;
+    if (totalIncome > 0) {
+      const balanceRatio = balance / totalIncome;
+      if (balanceRatio >= 0.3) {
+        spendingControlScore = 100; // Saving 30%+ is excellent
+      } else if (balanceRatio >= 0) {
+        spendingControlScore = (balanceRatio / 0.3) * 100; // Scale 0-30% savings to 0-100 score
+      } else {
+        // Penalize overspending more heavily
+        spendingControlScore = Math.max(0, 50 + (balanceRatio * 100)); // -50% overspending = 0 score
+      }
+    }
+
+    const weights = { savings: 0.40, spendingControl: 0.30, consistency: 0.20, diversity: 0.10 };
+    const healthScore = (savingsRatio * weights.savings) +
+      (spendingControlScore * weights.spendingControl) +
+      (consistencyScore * weights.consistency) +
+      (categoryDiversity * weights.diversity);
 
     let status = 'poor';
     let message = "Consider reviewing your financial habits.";
 
-    if (healthScore >= 80) {
+    if (healthScore >= 75) {
       status = 'excellent';
       message = "Excellent! You're saving well and managing your finances effectively.";
-    } else if (healthScore >= 60) {
+    } else if (healthScore >= 55) {
       status = 'good';
       message = "Good! You're on the right track with your financial management.";
-    } else if (healthScore >= 40) {
+    } else if (healthScore >= 35) {
       status = 'fair';
       message = "You're making progress, but there's room for improvement.";
     }
