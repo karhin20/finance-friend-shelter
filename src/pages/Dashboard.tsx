@@ -252,9 +252,19 @@ const Dashboard = () => {
       advice.push(`📊 You're only tracking ${uniqueCategories} expense ${uniqueCategories === 1 ? 'category' : 'categories'}. Break down expenses (Food, Transport, Bills, Entertainment, etc.) for better insights.`);
     }
 
-    // Top spending category analysis
-    if (topExpenseCategories.length > 0) {
-      const topCategory = topExpenseCategories[0];
+
+    // Top spending category analysis (calculate inline to avoid dependency issues)
+    const localTopExpenses = filteredExpenses.reduce((acc, item) => {
+      const key = item.category || 'Uncategorized';
+      acc[key] = (acc[key] || 0) + item.amount;
+      return acc;
+    }, {} as Record<string, number>);
+    const topExpensesArray = Object.entries(localTopExpenses)
+      .map(([name, amount]) => ({ name, amount }))
+      .sort((a, b) => b.amount - a.amount);
+
+    if (topExpensesArray.length > 0 && totalExpenses > 0) {
+      const topCategory = topExpensesArray[0];
       const topPercentage = (topCategory.amount / totalExpenses) * 100;
       if (topPercentage > 40) {
         advice.push(`📈 ${topCategory.name} accounts for ${Math.round(topPercentage)}% of spending (${formatCurrency(topCategory.amount)}). Look for ways to reduce this category.`);
@@ -301,7 +311,7 @@ const Dashboard = () => {
       score: Math.round(healthScore),
       advice: advice.slice(0, 5) // Limit to top 5 most relevant suggestions
     };
-  }, [savingsRatio, categoryDiversity, consistencyScore, totalIncome, totalExpenses, currentMonthSavings, currentMonthIncome, currentMonthExpenses, filteredExpenses.length, topExpenseCategories, formatCurrency, avgTransactionsPerDay, balance, uniqueCategories]); // Dependencies for health calculation
+  }, [savingsRatio, categoryDiversity, consistencyScore, totalIncome, totalExpenses, currentMonthSavings, currentMonthIncome, currentMonthExpenses, filteredExpenses, formatCurrency, avgTransactionsPerDay, balance, uniqueCategories]); // Dependencies for health calculation
 
   const financialHealth = useMemo(getFinancialHealthStatus, [getFinancialHealthStatus]);
 
