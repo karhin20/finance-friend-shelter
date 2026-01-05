@@ -224,31 +224,84 @@ const Dashboard = () => {
       message = "You're making progress, but there's room for improvement.";
     }
 
-    // Provide tailored advice based on financial behavior
+    // Provide tailored, actionable advice based on financial behavior
     const advice: string[] = [];
-    if (savingsRatio < 20) {
-      advice.push("Aim to save at least 20% of your income each month.");
-    }
-    if (uniqueCategories < 5) {
-      advice.push("Consider tracking expenses across more categories for better insights.");
-    }
-    if (avgTransactionsPerDay < 0.5) {
-      advice.push("Log your transactions more regularly for accurate tracking.");
-    }
+
+    // CRITICAL: Spending exceeds income
     if (totalExpenses > totalIncome) {
-      advice.push("Your expenses exceed your income. Consider reducing non-essential spending.");
+      const deficit = totalExpenses - totalIncome;
+      advice.push(`🚨 Critical: You're spending ${formatCurrency(deficit)} more than you earn. Cut non-essential expenses immediately.`);
     }
-    if (currentMonthSavings < 0) {
-      advice.push("This month, your expenses have exceeded your income. Review your spending.");
+
+    // URGENT: Negative savings this month
+    if (currentMonthSavings < 0 && totalExpenses <= totalIncome) {
+      advice.push(`⚠️ This month's expenses (${formatCurrency(currentMonthExpenses)}) exceed income (${formatCurrency(currentMonthIncome)}). Review and adjust spending.`);
+    }
+
+    // Savings rate analysis with specific targets
+    if (savingsRatio < 10 && totalIncome > 0) {
+      advice.push(`💰 Your savings rate is ${Math.round(savingsRatio)}%. Start with a goal to save at least 10-15% monthly, then work toward 20%.`);
+    } else if (savingsRatio < 20 && savingsRatio >= 10) {
+      advice.push(`💰 Good start! You're saving ${Math.round(savingsRatio)}%. Try increasing to 20% by reducing one recurring expense.`);
+    } else if (savingsRatio >= 20 && savingsRatio < 30) {
+      advice.push(`🎯 Excellent! You're saving ${Math.round(savingsRatio)}%. Consider increasing to 30% if possible for faster wealth building.`);
+    }
+
+    // Category diversity insights
+    if (uniqueCategories < 3 && filteredExpenses.length > 0) {
+      advice.push(`📊 You're only tracking ${uniqueCategories} expense ${uniqueCategories === 1 ? 'category' : 'categories'}. Break down expenses (Food, Transport, Bills, Entertainment, etc.) for better insights.`);
+    }
+
+    // Top spending category analysis
+    if (topExpenseCategories.length > 0) {
+      const topCategory = topExpenseCategories[0];
+      const topPercentage = (topCategory.amount / totalExpenses) * 100;
+      if (topPercentage > 40) {
+        advice.push(`📈 ${topCategory.name} accounts for ${Math.round(topPercentage)}% of spending (${formatCurrency(topCategory.amount)}). Look for ways to reduce this category.`);
+      }
+    }
+
+    // Transaction logging consistency
+    if (avgTransactionsPerDay < 0.3 && filteredExpenses.length < 10) {
+      advice.push(`✍️ Log transactions daily for accurate tracking. Even small purchases add up and impact your budget.`);
+    }
+
+    // Emergency fund recommendation (if savings are positive)
+    if (savingsRatio > 10 && currentMonthSavings > 0) {
+      const emergencyFundGoal = currentMonthExpenses * 3; // 3 months of expenses
+      if (currentMonthSavings < emergencyFundGoal) {
+        advice.push(`🛡️ Build an emergency fund covering 3-6 months of expenses (Target: ${formatCurrency(emergencyFundGoal)}). Save ${formatCurrency((emergencyFundGoal / 12))} monthly.`);
+      }
+    }
+
+    // Income growth suggestions
+    if (totalIncome < totalExpenses * 1.2 && totalIncome > 0) {
+      advice.push(`📈 Your income should ideally be 20%+ above expenses. Consider side hustles or additional income streams.`);
+    }
+
+    // Positive reinforcement for good behavior
+    if (savingsRatio >= 30) {
+      advice.push(`🌟 Outstanding! You're saving ${Math.round(savingsRatio)}%. You're building wealth effectively. Keep it up!`);
+    }
+
+    // Budget balance check
+    const budgetHealthRatio = totalIncome > 0 ? (balance / totalIncome) * 100 : 0;
+    if (budgetHealthRatio > 50 && balance > 0) {
+      advice.push(`✅ You're saving over 50% of your income! Consider investing excess savings for long-term growth.`);
+    }
+
+    // Default positive message if everything is great
+    if (advice.length === 0 || (healthScore >= 70 && advice.length < 2)) {
+      advice.push(`🎉 Great financial management! Your habits are strong. Continue tracking and growing your wealth.`);
     }
 
     return {
       status,
       message,
       score: Math.round(healthScore),
-      advice: advice.length > 0 ? advice : ["Keep up the good work!"]
+      advice: advice.slice(0, 5) // Limit to top 5 most relevant suggestions
     };
-  }, [savingsRatio, categoryDiversity, consistencyScore, totalIncome, totalExpenses, currentMonthSavings]); // Dependencies for health calculation
+  }, [savingsRatio, categoryDiversity, consistencyScore, totalIncome, totalExpenses, currentMonthSavings, currentMonthIncome, currentMonthExpenses, filteredExpenses.length, topExpenseCategories, formatCurrency, avgTransactionsPerDay, balance, uniqueCategories]); // Dependencies for health calculation
 
   const financialHealth = useMemo(getFinancialHealthStatus, [getFinancialHealthStatus]);
 
