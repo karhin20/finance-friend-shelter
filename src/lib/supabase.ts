@@ -22,17 +22,26 @@ export type Income = {
   amount: number;
   date: string;
   description?: string;
-  // Adding a category field to make it compatible with our dashboard code
-  category?: string;
+  category?: string; // Keep this for Income transactions
 };
 
 export type Expense = {
   id: string;
   user_id: string;
   amount: number;
-  category: string;
+  category: string; // References the name of a Category
   date: string;
   description?: string;
+  month?: string; // Keep if used
+};
+
+// Add the Category type definition
+export type Category = {
+    id: string; // uuid
+    user_id: string; // uuid, FK to auth.users
+    name: string; // text
+    type: 'income' | 'expense'; // text, constrained
+    created_at: string; // timestamp with time zone
 };
 
 // Type for combined transactions on dashboard

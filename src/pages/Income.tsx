@@ -1,37 +1,63 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
-import { CalendarIcon, Plus, Search, ArrowUpDown, Pencil, Trash2 } from 'lucide-react';
+import { CalendarIcon, Plus, Search, ArrowUpDown, Pencil, Trash2, AlertCircle, Settings as SettingsIcon, Loader2 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase, formatCurrency, formatDate, Income } from '@/lib/supabase';
+import { useFinance } from '@/contexts/FinanceContext';
+import { supabase, Income, formatCurrency, formatDate, Category } from '@/lib/supabase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { addWeeks, addMonths, addYears, startOfWeek, startOfMonth, isWithinInterval } from 'date-fns';
+
+// Helper function (place inside or outside the component)
+const calculateNextOccurrence = (startDate: Date, frequency: 'weekly' | 'monthly' | 'yearly'): Date => {
+  switch (frequency) {
+    case 'weekly':
+      return addWeeks(startDate, 1);
+    case 'monthly':
+      return addMonths(startDate, 1);
+    case 'yearly':
+      return addYears(startDate, 1);
+    default:
+      console.warn("Invalid frequency provided to calculateNextOccurrence");
+      return startDate;
+  }
+};
 
 const IncomePage = () => {
-  const { user } = useAuth();
   const { toast } = useToast();
-  const [income, setIncome] = useState<Income[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const {
+    incomeQuery,
+    addIncomeMutation,
+    updateIncomeMutation,
+    deleteIncomeMutation,
+    categoriesQuery
+  } = useFinance();
+
+  const { data: income = [], isLoading: isIncomeLoading, isError: isIncomeError, error: incomeError } = incomeQuery;
+  const { data: allCategories = [], isLoading: isLoadingCategories } = categoriesQuery;
+
   const navigate = useNavigate();
 
   // Form state
   const [amount, setAmount] = useState<string>('');
   const [date, setDate] = useState<Date>(new Date());
+  const [source, setSource] = useState<string>('');
   const [description, setDescription] = useState<string>('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Filtering and sorting
   const [searchQuery, setSearchQuery] = useState('');
@@ -44,133 +70,41 @@ const IncomePage = () => {
   const [editingIncome, setEditingIncome] = useState<Income | null>(null);
   const [editAmount, setEditAmount] = useState('');
   const [editDate, setEditDate] = useState<Date>(new Date());
+  const [editSource, setEditSource] = useState('');
   const [editDescription, setEditDescription] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
 
   // Add recurring options to the income form
-  const [recurring, setRecurring] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(false);
   const [frequency, setFrequency] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
+  const [createInitialTransaction, setCreateInitialTransaction] = useState(true);
 
   // Add state variables for delete functionality (near the top of the component where other states are defined)
   const [incomeToDelete, setIncomeToDelete] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  // Fetch income data
-  useEffect(() => {
-    if (!user) return;
-
-    const fetchIncome = async () => {
-      setLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('income')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('date', { ascending: false });
-
-        if (error) {
-          console.error('Error fetching income:', error);
-          
-          // If table doesn't exist, redirect to db-setup
-          if (error.message.includes('does not exist')) {
-            toast({
-              title: 'Database setup needed',
-              description: 'Tables need to be created. Redirecting to setup page.',
-              variant: 'destructive',
-            });
-            
-            // Wait a moment to show the toast, then redirect
-            setTimeout(() => {
-              navigate('/db-setup');
-            }, 1500);
-            return;
-          }
-          
-          throw error;
-        }
-        
-        setIncome(data || []);
-      } catch (error: any) {
-        console.error('Error fetching income:', error.message);
-        toast({
-          title: 'Error',
-          description: 'Failed to load income data. Please try again.',
-          variant: 'destructive',
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchIncome();
-  }, [user, toast, navigate]);
-
-  // Add new income
-  const handleAddIncome = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!user || !amount || !date) {
-      toast({
-        title: 'Missing information',
-        description: 'Please fill in all required fields.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    // Parse amount as number and validate
-    const amountNum = parseFloat(amount);
-    if (isNaN(amountNum) || amountNum <= 0) {
-      toast({
-        title: 'Invalid amount',
-        description: 'Please enter a valid positive number.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const { data, error } = await supabase.from('income').insert([
-        {
-          user_id: user.id,
-          amount: amountNum,
-          date: date.toISOString(),
-          description: description.trim() || null,
-        },
-      ]).select();
-
-      if (error) throw error;
-
-      // Reset form and update income list
-      setAmount('');
-      setDate(new Date());
-      setDescription('');
-      setIncome([...(data || []), ...income]);
-
-      toast({
-        title: 'Income added',
-        description: `Successfully added ${formatCurrency(amountNum)} to your income.`,
-      });
-    } catch (error: any) {
-      console.error('Error adding income:', error);
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to add income. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  // +++ ADDED: Local state for timeframe filtering +++
+  const [localTimeframe, setLocalTimeframe] = useState<'week' | 'month' | 'all'>('all');
 
   // Filtering and sorting logic
-  const filteredIncome = income.filter(item =>
-    item.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    formatCurrency(item.amount).includes(searchQuery) ||
-    formatDate(item.date).toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredIncome = useMemo(() => {
+    let filtered = income.filter(item =>
+      item.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      formatCurrency(item.amount).includes(searchQuery) ||
+      formatDate(item.date).toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    const today = new Date();
+    const startOfWeekDate = startOfWeek(today, { weekStartsOn: 0 });
+    const startOfMonthDate = startOfMonth(today);
+
+    if (localTimeframe === 'week') {
+      filtered = filtered.filter(item => isWithinInterval(new Date(item.date), { start: startOfWeekDate, end: today }));
+    } else if (localTimeframe === 'month') {
+      filtered = filtered.filter(item => isWithinInterval(new Date(item.date), { start: startOfMonthDate, end: today }));
+    }
+
+    return filtered;
+  }, [income, searchQuery, localTimeframe]);
 
   const sortedIncome = [...filteredIncome].sort((a, b) => {
     if (!sortConfig) return 0;
@@ -206,11 +140,15 @@ const IncomePage = () => {
   // Calculate total income
   const totalIncome = filteredIncome.reduce((sum, item) => sum + item.amount, 0);
 
+  // Filter categories for income type
+  const incomeCategories = useMemo(() => allCategories.filter(c => c.type === 'income'), [allCategories]);
+
   // Add a function to open the edit dialog
   const openEditDialog = (income: Income) => {
     setEditingIncome(income);
     setEditAmount(income.amount.toString());
     setEditDate(new Date(income.date));
+    setEditSource(income.category || '');
     setEditDescription(income.description || '');
     setEditDialogOpen(true);
   };
@@ -219,63 +157,40 @@ const IncomePage = () => {
   const handleEditIncome = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!user || !editingIncome) return;
+    if (!editingIncome || !editSource) return;
     
     // Validate the amount
     const amountNum = parseFloat(editAmount);
     if (isNaN(amountNum) || amountNum <= 0) {
-      toast({
-        title: 'Invalid amount',
-        description: 'Please enter a valid positive number.',
-        variant: 'destructive',
-      });
+       toast({ title: "Invalid Amount", description: "Please enter a valid positive amount.", variant: "destructive" });
       return;
     }
     
-    setIsEditing(true);
-    
-    try {
-      // Update the income in the database
-      const { error } = await supabase
-        .from('income')
-        .update({
+    // Find the category ID based on the selected name
+    const selectedCategory = incomeCategories.find(cat => cat.name === editSource);
+    if (!selectedCategory) {
+        toast({ title: "Category Error", description: "Selected category not found.", variant: "destructive" });
+        return;
+    }
+
+    updateIncomeMutation.mutate({
+      id: editingIncome.id,
+      updates: {
           amount: amountNum,
           date: editDate.toISOString(),
-          description: editDescription || null,
-        })
-        .eq('id', editingIncome.id)
-        .eq('user_id', user.id);
-      
-      if (error) throw error;
-      
-      // Update the local state
-      setIncome(income.map(item => 
-        item.id === editingIncome.id 
-          ? { 
-              ...item, 
-              amount: amountNum, 
-              date: editDate.toISOString(), 
-              description: editDescription || null 
-            } 
-          : item
-      ));
-      
-      toast({
-        title: 'Income updated',
-        description: 'Your income has been updated successfully.',
-      });
-      
+        category: editSource,
+        description: editDescription.trim() || null,
+      }
+    }, {
+      onSuccess: () => {
       setEditDialogOpen(false);
-    } catch (error: any) {
-      console.error('Error updating income:', error);
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to update income. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsEditing(false);
-    }
+        toast({ title: "Income Updated", description: "Transaction details saved." });
+      },
+      onError: (error) => {
+         console.error("Error updating income:", error);
+         toast({ title: "Error", description: `Failed to update income: ${error.message}`, variant: "destructive" });
+      }
+    });
   };
 
   // Add function to open the delete confirmation dialog
@@ -286,39 +201,120 @@ const IncomePage = () => {
 
   // Add function to handle the actual delete operation
   const handleDelete = async () => {
-    if (!user || !incomeToDelete) return;
-    
-    setIsDeleting(true);
-    
-    try {
-      const { error } = await supabase
-        .from('income')
-        .delete()
-        .eq('id', incomeToDelete)
-        .eq('user_id', user.id);
-      
-      if (error) throw error;
-      
-      // Update the local state
-      setIncome(income.filter(item => item.id !== incomeToDelete));
-      
-      toast({
-        title: 'Income deleted',
-        description: 'Your income record has been deleted successfully.',
-      });
-      
-      setDeleteDialogOpen(false);
-    } catch (error: any) {
-      console.error('Error deleting income:', error);
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to delete income. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsDeleting(false);
-      setIncomeToDelete(null);
+    if (!incomeToDelete) return;
+    deleteIncomeMutation.mutate(incomeToDelete, {
+      onSuccess: () => {
+        toast({ title: "Income Deleted", description: "Transaction removed." });
+        setDeleteDialogOpen(false);
+        setIncomeToDelete(null);
+      },
+      onError: (error) => {
+        toast({ title: "Error Deleting", description: `Failed to delete: ${error.message}`, variant: "destructive" });
+      }
+    });
+  };
+
+  const handleAddIncome = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // Basic validation
+    if (!amount || !date || !source || !user) {
+       toast({ title: "Missing Fields", description: "Amount, Date, Source, and User are required.", variant: "destructive" });
+       return;
     }
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum) || amountNum <= 0) {
+       toast({ title: "Invalid Amount", description: "Please enter a valid positive amount.", variant: "destructive" });
+       return;
+    }
+
+    const selectedCategory = incomeCategories.find(cat => cat.name === source);
+    if (!selectedCategory) {
+        toast({ title: "Category Error", description: "Selected category not found.", variant: "destructive" });
+        return;
+    }
+
+    if (isRecurring) {
+      // Determine the correct next_due_date
+      const startDateForRule = date; // The date selected in the form
+      const nextDueDateForDb = createInitialTransaction
+        ? calculateNextOccurrence(startDateForRule, frequency) // Calculate next occurrence if adding initial
+        : startDateForRule; // Otherwise, the first due date is the start date
+
+      // 1. Create the Recurring Rule
+      try {
+        const { error: recurringError } = await supabase.from('recurring_transactions').insert([{
+          user_id: user.id,
+          type: 'income',
+          amount: amountNum,
+          category: source,
+          description: description.trim() || null,
+          frequency: frequency,
+          start_date: format(startDateForRule, 'yyyy-MM-dd'), // Use the selected date
+          next_due_date: format(nextDueDateForDb, 'yyyy-MM-dd'), // Use the calculated date
+          is_active: true
+        }]);
+        if (recurringError) throw recurringError;
+
+        toast({ title: "Recurring Income Rule Saved", description: `Will add ${formatCurrency(amountNum)} ${frequency}.` });
+
+        // 2. Optionally Add the Initial Transaction (using the selected date)
+        if (createInitialTransaction) {
+          addIncomeMutation.mutate({
+            amount: amountNum,
+            date: startDateForRule.toISOString(), // Use the selected date for the initial transaction
+            category: source,
+            description: description.trim() || null,
+          }, {
+            onSuccess: () => {
+              toast({ title: "Initial Income Added", description: "First transaction recorded." });
+              // Reset form only after both potentially succeed
+              setAmount(''); setDate(new Date()); setSource(''); setDescription(''); setIsRecurring(false); setFrequency('monthly'); setCreateInitialTransaction(true);
+            },
+            onError: (error) => {
+              console.error("Error adding initial income:", error);
+              toast({ title: "Error Adding Initial Income", description: `Recurring rule saved, but failed to add initial transaction: ${error.message}`, variant: "destructive" });
+              // Reset form partially? Or leave as is? Consider UX.
+              setAmount(''); setDate(new Date()); setSource(''); setDescription(''); setIsRecurring(false); setFrequency('monthly'); setCreateInitialTransaction(true);
+            }
+          });
+        } else {
+           // Reset form if only rule was created
+           setAmount(''); setDate(new Date()); setSource(''); setDescription(''); setIsRecurring(false); setFrequency('monthly'); setCreateInitialTransaction(true);
+        }
+
+    } catch (error: any) {
+        console.error("Error saving recurring income:", error);
+        toast({ title: "Error Saving Rule", description: `Failed to save recurring rule: ${error.message}`, variant: "destructive" });
+      }
+    } else {
+      // --- Add Single Income Transaction ---
+      addIncomeMutation.mutate({
+        amount: amountNum,
+        date: date.toISOString(), // Use the selected date
+        category: source,
+        description: description.trim() || null,
+      }, {
+        onSuccess: () => {
+          setAmount(''); setDate(new Date()); setSource(''); setDescription(''); setIsRecurring(false); setFrequency('monthly'); setCreateInitialTransaction(true); // Reset all form fields
+          toast({ title: "Income Added", description: "Your income has been recorded." });
+        },
+        onError: (error) => {
+          console.error("Error adding income:", error);
+          toast({ title: "Error", description: `Failed to add income: ${error.message}`, variant: "destructive" });
+        }
+      });
+    }
+  };
+
+  // Determine Button Text
+  const getButtonText = () => {
+    if (addIncomeMutation.isLoading || updateIncomeMutation.isLoading) {
+      return "Saving...";
+    }
+    if (isRecurring) {
+      return createInitialTransaction ? "Save Rule & Add Initial" : "Save Recurring Rule";
+    }
+    return "Add Income";
   };
 
   return (
@@ -329,6 +325,22 @@ const IncomePage = () => {
           <h1 className="text-3xl font-bold tracking-tight">Income</h1>
           <p className="text-muted-foreground">Add and manage your income sources</p>
         </div>
+
+        {/* === Onboarding Alert === */}
+        {!isLoadingCategories && incomeCategories.length === 0 && (
+          <Alert variant="default" className="bg-blue-50 border border-blue-200 text-blue-800">
+            <SettingsIcon className="h-4 w-4 !text-blue-600" />
+            <AlertTitle className="text-blue-900 font-semibold">Set Up Your Income Categories!</AlertTitle>
+            <AlertDescription>
+              You haven't added any income categories yet. Go to{' '}
+              <Link to="/settings" className="font-medium underline hover:text-blue-900">
+                Settings &gt; Categories
+              </Link>
+              {' '}to create sources like "Salary", "Freelance", etc., before adding income.
+            </AlertDescription>
+          </Alert>
+        )}
+        {/* === End Onboarding Alert === */}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Add Income Form */}
@@ -384,6 +396,31 @@ const IncomePage = () => {
                 </div>
 
                 <div className="space-y-2">
+                  <Label htmlFor="source">Source/Category</Label>
+                  <Select
+                    value={source}
+                    onValueChange={setSource}
+                    required
+                    disabled={isLoadingCategories || incomeCategories.length === 0}
+                  >
+                    <SelectTrigger id="source">
+                      <SelectValue placeholder={
+                        isLoadingCategories ? "Loading..." :
+                        incomeCategories.length === 0 ? "Add categories in Settings" :
+                        "Select source"
+                      } />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {!isLoadingCategories && incomeCategories.length > 0 && (
+                        incomeCategories.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="description">Description (Optional)</Label>
                   <Textarea
                     id="description"
@@ -393,20 +430,29 @@ const IncomePage = () => {
                   />
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 pt-2 border-t">
                   <div className="flex items-center space-x-2">
                     <Checkbox
-                      id="recurring"
-                      checked={recurring}
-                      onCheckedChange={(checked) => setRecurring(checked === true)}
+                      id="recurring-income"
+                      checked={isRecurring}
+                      onCheckedChange={(checked) => {
+                          setIsRecurring(checked === true);
+                          // Reset createInitialTransaction when unchecking recurring
+                          if (checked !== true) setCreateInitialTransaction(true);
+                      }}
+                      disabled={incomeCategories.length === 0}
                     />
-                    <Label htmlFor="recurring">Recurring income</Label>
+                    <Label htmlFor="recurring-income" className="font-medium">Set as Recurring Income?</Label>
                   </div>
                   
-                  {recurring && (
-                    <Select value={frequency} onValueChange={(value: any) => setFrequency(value)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Frequency" />
+                  {isRecurring && (
+                    <div className="space-y-4 pl-6 pt-2">
+                       {/* Frequency Select */}
+                       <div>
+                          <Label htmlFor="frequency-income">Frequency</Label>
+                          <Select value={frequency} onValueChange={(v: any) => setFrequency(v)} required={isRecurring}>
+                            <SelectTrigger id="frequency-income">
+                              <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="weekly">Weekly</SelectItem>
@@ -414,13 +460,31 @@ const IncomePage = () => {
                         <SelectItem value="yearly">Yearly</SelectItem>
                       </SelectContent>
                     </Select>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Starts on the selected date ({format(date, "PPP")}).
+                          </p>
+                       </div>
+                       {/* New Checkbox for Initial Transaction */}
+                       <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="create-initial-income"
+                            checked={createInitialTransaction}
+                            onCheckedChange={(checked) => setCreateInitialTransaction(checked === true)}
+                          />
+                          <Label htmlFor="create-initial-income" className="text-sm font-normal">Add first transaction now?</Label>
+                       </div>
+                    </div>
                   )}
                 </div>
               </CardContent>
               <CardFooter>
-                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={addIncomeMutation.isLoading || updateIncomeMutation.isLoading || incomeCategories.length === 0}
+                >
                   <Plus className="mr-2 h-4 w-4" />
-                  {isSubmitting ? "Adding..." : "Add Income"}
+                  {getButtonText()}
                 </Button>
               </CardFooter>
             </form>
@@ -446,9 +510,33 @@ const IncomePage = () => {
                   />
                 </div>
               </div>
+              {/* +++ ADDED: Timeframe filter buttons +++ */}
+              <div className="flex space-x-2 mt-4">
+                <Button
+                  variant={localTimeframe === 'week' ? 'default' : 'outline'}
+                  onClick={() => setLocalTimeframe('week')}
+                  size="sm"
+                >
+                  This Week
+                </Button>
+                <Button
+                  variant={localTimeframe === 'month' ? 'default' : 'outline'}
+                  onClick={() => setLocalTimeframe('month')}
+                  size="sm"
+                >
+                  This Month
+                </Button>
+                <Button
+                  variant={localTimeframe === 'all' ? 'default' : 'outline'}
+                  onClick={() => setLocalTimeframe('all')}
+                  size="sm"
+                >
+                  All Time
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              {loading ? (
+              {isIncomeLoading ? (
                 <div className="space-y-4 animate-pulse">
                   {[...Array(5)].map((_, i) => (
                     <div key={i} className="flex justify-between p-2">
@@ -456,6 +544,12 @@ const IncomePage = () => {
                       <div className="h-6 w-20 bg-muted rounded"></div>
                     </div>
                   ))}
+                </div>
+              ) : isIncomeError ? (
+                <div className="text-center py-12 text-destructive flex flex-col items-center gap-2">
+                  <AlertCircle className="h-6 w-6"/>
+                  <p className="font-semibold">Error Loading Income</p>
+                  <p className="text-sm">{incomeError?.message || 'An unknown error occurred.'}</p>
                 </div>
               ) : sortedIncome.length > 0 ? (
                 <div className="rounded-md border">
@@ -482,6 +576,15 @@ const IncomePage = () => {
                         </TableHead>
                         <TableHead 
                           className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => requestSort('category')}
+                        >
+                          <div className="flex items-center space-x-1">
+                            <span>Source/Category</span>
+                            <ArrowUpDown className="h-3 w-3" />
+                          </div>
+                        </TableHead>
+                        <TableHead 
+                          className="cursor-pointer hover:bg-muted/50"
                           onClick={() => requestSort('description')}
                         >
                           <div className="flex items-center space-x-1">
@@ -497,10 +600,14 @@ const IncomePage = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {sortedIncome.map((item) => (
+                      {sortedIncome.map((item) => {
+                        return (
                         <TableRow key={item.id}>
                           <TableCell className="font-medium">{formatDate(item.date)}</TableCell>
                           <TableCell className="text-income">{formatCurrency(item.amount)}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {item.category || "-"}
+                            </TableCell>
                           <TableCell className="text-muted-foreground">
                             {item.description || "-"}
                           </TableCell>
@@ -512,6 +619,7 @@ const IncomePage = () => {
                                 onClick={() => openEditDialog(item)}
                                 className="text-muted-foreground hover:text-primary"
                                 title="Edit"
+                                  disabled={updateIncomeMutation.isLoading || deleteIncomeMutation.isLoading}
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
@@ -521,20 +629,21 @@ const IncomePage = () => {
                                 onClick={() => confirmDelete(item.id)}
                                 className="text-muted-foreground hover:text-destructive"
                                 title="Delete"
+                                  disabled={updateIncomeMutation.isLoading || deleteIncomeMutation.isLoading}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
                           </TableCell>
                         </TableRow>
-                      ))}
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
               ) : (
                 <div className="text-center py-12">
-                  <p className="text-muted-foreground mb-6">No income transactions yet</p>
-                  <p className="text-sm text-muted-foreground mb-4">Use the form to add your first income entry</p>
+                  <p>No income transactions found for the selected date range.</p>
                 </div>
               )}
             </CardContent>
@@ -596,6 +705,21 @@ const IncomePage = () => {
             </div>
             
             <div className="space-y-2">
+              <Label htmlFor="editSource">Source/Category</Label>
+              <Select value={editSource} onValueChange={setEditSource} required>
+                <SelectTrigger id="editSource" disabled={isLoadingCategories}>
+                  <SelectValue placeholder="Select source" />
+                </SelectTrigger>
+                <SelectContent>
+                  {isLoadingCategories ? (<SelectItem value="loading" disabled>Loading...</SelectItem >)
+                    : (incomeCategories.map((cat) => (
+                      <SelectItem key={`edit-${cat.id}`} value={cat.name}>{cat.name}</SelectItem>
+                    )))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
               <Label htmlFor="editDescription">Description (Optional)</Label>
               <Textarea
                 id="editDescription"
@@ -610,15 +734,15 @@ const IncomePage = () => {
                 variant="outline" 
                 onClick={() => setEditDialogOpen(false)}
                 type="button"
-                disabled={isEditing}
+                disabled={updateIncomeMutation.isLoading}
               >
                 Cancel
               </Button>
               <Button 
                 type="submit"
-                disabled={isEditing}
+                disabled={updateIncomeMutation.isLoading}
               >
-                {isEditing ? "Saving..." : "Save Changes"}
+                {updateIncomeMutation.isLoading ? "Saving..." : "Save Changes"}
               </Button>
             </DialogFooter>
           </form>
@@ -643,16 +767,23 @@ const IncomePage = () => {
             <Button 
               variant="outline" 
               onClick={() => setDeleteDialogOpen(false)}
-              disabled={isDeleting}
+              disabled={deleteIncomeMutation.isLoading}
             >
               Cancel
             </Button>
             <Button 
               variant="destructive" 
               onClick={handleDelete}
-              disabled={isDeleting}
+              disabled={deleteIncomeMutation.isLoading}
             >
-              {isDeleting ? "Deleting..." : "Delete"}
+              {deleteIncomeMutation.isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

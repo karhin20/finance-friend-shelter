@@ -1,93 +1,100 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase, formatCurrency, formatDate, Income, Expense } from '@/lib/supabase';
+import { useFinance, RecurringTransaction } from '@/contexts/FinanceContext';
+import { Income, Expense, formatCurrency, formatDate } from '@/lib/supabase';
 import { BarChart, PieChart, Pie, Bar, XAxis, YAxis, Tooltip, Legend, Cell, ResponsiveContainer } from 'recharts';
-import { ArrowUpRight, TrendingUp, TrendingDown, DollarSign, Plus, ExternalLink, Calculator } from 'lucide-react';
-
+import { ArrowUpRight, TrendingUp, TrendingDown, DollarSign, Plus, ExternalLink, Calculator, Repeat, Moon, Sun, Clock } from 'lucide-react';
+import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, isWithinInterval, addDays, isAfter, parseISO, differenceInDays } from 'date-fns';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 const Dashboard = () => {
-  const { user } = useAuth();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [income, setIncome] = useState<Income[]>(() => {
-    const cachedIncome = localStorage.getItem('dashboard_income');
-    return cachedIncome ? JSON.parse(cachedIncome) : [];
-  });
-  const [expenses, setExpenses] = useState<Expense[]>(() => {
-    const cachedExpenses = localStorage.getItem('dashboard_expenses');
-    return cachedExpenses ? JSON.parse(cachedExpenses) : [];
-  });
-  const [timeframe, setTimeframe] = useState('month');
+  const {
+      incomeQuery,
+      expensesQuery,
+      filters,
+      setFilters,
+      recurringTransactionsQuery
+  } = useFinance();
 
+  // Destructure data and loading states
+  const { data: filteredIncome = [], isLoading: isIncomeLoading } = incomeQuery;
+  const { data: filteredExpenses = [], isLoading: isExpensesLoading } = expensesQuery;
+  const { data: recurringRules = [], isLoading: isRecurringLoading } = recurringTransactionsQuery;
+  const isLoading = isIncomeLoading || isExpensesLoading || isRecurringLoading;
 
+  const [timeframe, setTimeframe] = useState<'week' | 'month' | 'year'>('month');
+
+  // --- Update Context Filter when Timeframe Changes ---
   useEffect(() => {
-    if (!user) return;
-
-    const fetchData = async () => {
-      setLoading(true);
-      try {
- 
         const today = new Date();
-        let startDate = new Date();
+    let start: Date;
+    let end: Date;
         
         if (timeframe === 'week') {
-          startDate.setDate(today.getDate() - 7);
+      start = startOfWeek(today, { weekStartsOn: 0 });
+      end = endOfWeek(today, { weekStartsOn: 0 });
         } else if (timeframe === 'month') {
-          startDate.setMonth(today.getMonth() - 1);
-        } else if (timeframe === 'year') {
-          startDate.setFullYear(today.getFullYear() - 1);
-        }
+      start = startOfMonth(today);
+      end = endOfMonth(today);
+    } else { // year
+      start = startOfYear(today);
+      end = endOfYear(today);
+    }
+    end.setHours(23, 59, 59, 999); // Include full end day
 
-        const startDateStr = startDate.toISOString();
-        
-        // Fetch income
-        const { data: incomeData, error: incomeError } = await supabase
-          .from('income')
-          .select('*')
-          .eq('user_id', user.id)
-          .gte('date', startDateStr)
-          .order('date', { ascending: false });
+    // Update the context filter only if it's different
+    if (filters.dateRange?.from?.getTime() !== start.getTime() || filters.dateRange?.to?.getTime() !== end.getTime()) {
+       setFilters(prev => ({ ...prev, dateRange: { from: start, to: end } }));
+    }
+  }, [timeframe, setFilters, filters.dateRange]); // Re-run when timeframe changes
 
-        if (incomeError) throw incomeError;
-        setIncome(incomeData || []);
-        localStorage.setItem('dashboard_income', JSON.stringify(incomeData || []));
-
-        // Fetch expenses
-        const { data: expensesData, error: expensesError } = await supabase
-          .from('expenses')
-          .select('*')
-          .eq('user_id', user.id)
-          .gte('date', startDateStr)
-          .order('date', { ascending: false });
-
-        if (expensesError) throw expensesError;
-        setExpenses(expensesData || []);
-        localStorage.setItem('dashboard_expenses', JSON.stringify(expensesData || []));
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [user, timeframe]);
-
-  // Calculate summary metrics
-  const totalIncome = income.reduce((sum, item) => sum + item.amount, 0);
-  const totalExpenses = expenses.reduce((sum, item) => sum + item.amount, 0);
+  // --- Calculations (Now use filteredIncome/filteredExpenses directly from context) ---
+  const totalIncome = filteredIncome.reduce((sum, item) => sum + item.amount, 0);
+  const totalExpenses = filteredExpenses.reduce((sum, item) => sum + item.amount, 0);
   const balance = totalIncome - totalExpenses;
 
-  // Prepare data for expense categories pie chart
-  const categoryData = expenses.reduce((acc: { [key: string]: number }, expense) => {
-    if (!acc[expense.category]) {
-      acc[expense.category] = 0;
+  // --- Calculate Number of Days in Filter Range ---
+  const numberOfDaysInFilter = useMemo(() => {
+    if (filters.dateRange?.from && filters.dateRange?.to) {
+      // Ensure dates are valid Date objects
+      const startDate = filters.dateRange.from instanceof Date ? filters.dateRange.from : new Date(filters.dateRange.from);
+      const endDate = filters.dateRange.to instanceof Date ? filters.dateRange.to : new Date(filters.dateRange.to);
+
+      if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+         // differenceInDays is exclusive of the end date, add 1 for inclusive count
+         return differenceInDays(endDate, startDate) + 1;
+      }
     }
+    // Default or fallback if dates are invalid/not set (e.g., for 'month')
+    const today = new Date();
+    if (timeframe === 'week') return 7;
+    if (timeframe === 'month') return differenceInDays(endOfMonth(today), startOfMonth(today)) + 1;
+    if (timeframe === 'year') return differenceInDays(endOfYear(today), startOfYear(today)) + 1;
+    return 1; // Fallback to 1 to avoid division by zero
+  }, [filters.dateRange, timeframe]); // Recalculate when filter range or timeframe changes
+
+  // --- Calculate Average Daily Expenses ---
+  const averageDailyExpenses = useMemo(() => {
+    if (numberOfDaysInFilter <= 0) return 0; // Avoid division by zero
+    return totalExpenses / numberOfDaysInFilter;
+  }, [totalExpenses, numberOfDaysInFilter]);
+
+  // Prepare data for expense categories pie chart (using filteredExpenses)
+  const categoryData = filteredExpenses.reduce((acc: { [key: string]: number }, expense) => {
+    if (!acc[expense.category]) acc[expense.category] = 0;
     acc[expense.category] += expense.amount;
     return acc;
   }, {});
@@ -95,185 +102,108 @@ const Dashboard = () => {
   const pieChartData = Object.keys(categoryData).map(category => ({
     name: category,
     value: categoryData[category]
-  }));
+  })).sort((a, b) => b.value - a.value); // Sort for consistent colors
 
-  // Prepare data for income vs expenses bar chart
-  // Group by week/month depending on timeframe
-  const groupedData = () => {
+  // Prepare data for income vs expenses bar chart (using filteredIncome, filteredExpenses)
+  const groupedData = useMemo(() => {
     const incomeMap: Record<string, number> = {};
     const expenseMap: Record<string, number> = {};
     
-    // Format based on timeframe
+      // Format based on timeframe (same logic as before)
     const getDateKey = (dateStr: string) => {
       const date = new Date(dateStr);
-      
-      if (timeframe === 'week') {
-        // Show day of week (Sun, Mon, etc.)
-        const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        return daysOfWeek[date.getDay()];
-      } else if (timeframe === 'month') {
-        // Get the day of week (0 = Sunday, 6 = Saturday)
-        const dayOfWeek = date.getDay();
-        // Calculate the date of the previous Sunday (or the same date if it's already Sunday)
-        const sunday = new Date(date);
-        sunday.setDate(date.getDate() - dayOfWeek);
-        // Format as "DD MMM - DD MMM"
-        const saturdayDate = new Date(sunday);
-        saturdayDate.setDate(sunday.getDate() + 6);
-        
-        // Format the dates as "D MMM"
-        const formatDate = (d: Date) => {
-          const day = d.getDate();
-          const month = d.toLocaleString('default', { month: 'short' }).toUpperCase();
-          return `${day} ${month}`;
-        };
-        return `${formatDate(sunday)} - ${formatDate(saturdayDate)}`;
-      } else {
-        return date.toLocaleString('default', { month: 'short' });
-      }
-    };
-    
-    // Add income data
-    income.forEach(item => {
+        if (timeframe === 'week') return date.toLocaleString('default', { weekday: 'short' }); // Mon, Tue etc.
+        if (timeframe === 'month') return date.getDate().toString(); // 1, 2, 3 etc.
+        if (timeframe === 'year') return date.toLocaleString('default', { month: 'short' }); // Jan, Feb etc.
+        return '';
+      };
+
+       // Use filtered data
+       filteredIncome.forEach(item => {
       const key = getDateKey(item.date);
       incomeMap[key] = (incomeMap[key] || 0) + item.amount;
     });
-    
-    // Add expense data
-    expenses.forEach(item => {
+       filteredExpenses.forEach(item => {
       const key = getDateKey(item.date);
       expenseMap[key] = (expenseMap[key] || 0) + item.amount;
     });
     
-    // Combine into format needed for chart
-    const keys = [...new Set([...Object.keys(incomeMap), ...Object.keys(expenseMap)])];
-    
-    // Sort the keys appropriately by timeframe
-    const sortedKeys = [...keys].sort((a, b) => {
-      if (timeframe === 'week') {
-        // Sort by day of week (Sun, Mon, Tue, etc.)
-        const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        return daysOfWeek.indexOf(a) - daysOfWeek.indexOf(b);
-      } else if (timeframe === 'month') {
-        // Extract the dates from "D MMM - D MMM" and sort by the start date
-        const getStartDate = (weekStr: string) => {
-          const dateStr = weekStr.split(' - ')[0];
-          const day = parseInt(dateStr.split(' ')[0]);
-          const month = dateStr.split(' ')[1];
-          const monthIndex = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'].indexOf(month);
-          // Use current year (this is fine for sorting within a month)
-          return new Date(new Date().getFullYear(), monthIndex, day);
-        };
-        // Sort from earliest to latest
-        return getStartDate(a).getTime() - getStartDate(b).getTime();
-      } else {
-        // For year view, sort months chronologically
-        const monthOrder = {
-          'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
-          'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
-        };
-        return (monthOrder[a as keyof typeof monthOrder] || 0) - (monthOrder[b as keyof typeof monthOrder] || 0);
-      }
-    });
-    
-    return sortedKeys.map(key => ({
+      const keys = Array.from(new Set([...Object.keys(incomeMap), ...Object.keys(expenseMap)]));
+
+      // Sort keys appropriately (same logic as before)
+      const dayOrder = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+      keys.sort((a, b) => {
+         if (timeframe === 'week') return dayOrder.indexOf(a) - dayOrder.indexOf(b);
+         if (timeframe === 'month') return parseInt(a) - parseInt(b);
+         if (timeframe === 'year') return monthOrder.indexOf(a) - monthOrder.indexOf(b);
+         return 0;
+      });
+
+      return keys.map(key => ({
       name: key,
       Income: incomeMap[key] || 0,
       Expenses: expenseMap[key] || 0
     }));
-  };
+  }, [filteredIncome, filteredExpenses, timeframe]);
 
-  const chartData = groupedData();
 
-  // Colors for charts
+  const chartData = groupedData;
+
   const COLORS = ['#0A84FF', '#00C49F', '#FF5A5F', '#FFBB28', '#AF52DE', '#FF9500', '#5856D6'];
 
-  // Recent transactions (combined and sorted)
+  // Recent transactions (using *all* data from context, sorted, limited)
+  const { data: allIncomeForRecent = [] } = incomeQuery; 
+  const { data: allExpensesForRecent = [] } = expensesQuery;
   const recentTransactions = useMemo(() => {
     try {
-      if (!income || !income.length || !expenses || !expenses.length) {
-        return [];
-      }
-      
-      return [
-        ...(income || []).map(item => ({
-          ...item,
-          type: 'income',
-          category: 'Income' // Add a default category for income items
-        })), 
-        ...(expenses || []).map(item => ({
-          ...item,
-          type: 'expense'
-        }))
-      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+      return [...allIncomeForRecent.map(i => ({ ...i, type: 'income' as const })),
+              ...allExpensesForRecent.map(e => ({ ...e, type: 'expense' as const }))]
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 5); // Show 5 most recent overall
     } catch (error) {
-      console.error('Error processing transactions:', error);
+      console.error('Error processing recent transactions:', error);
       return [];
     }
-  }, [income, expenses]);
+  }, [allIncomeForRecent, allExpensesForRecent]); // Depend on the full data from context
 
-  // Improved implementation
-  const isCurrentMonth = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    return date.getMonth() === now.getMonth() && 
-           date.getFullYear() === now.getFullYear();
-  };
+ // Financial Health calculations (use filtered data for timeframe-specific metrics)
+ const currentMonthStart = startOfMonth(new Date());
+ const currentMonthEnd = endOfMonth(new Date());
 
-  // And update where it's used:
-  const currentMonthIncome = income
-    .filter(t => isCurrentMonth(t.date))
+ const currentMonthIncome = filteredIncome // Use filtered data for consistency within view
+    .filter(t => isWithinInterval(new Date(t.date), { start: currentMonthStart, end: currentMonthEnd }))
     .reduce((sum, t) => sum + t.amount, 0);
 
-  const currentMonthExpenses = expenses
-    .filter(t => isCurrentMonth(t.date))
+ const currentMonthExpenses = filteredExpenses // Use filtered data for consistency within view
+    .filter(t => isWithinInterval(new Date(t.date), { start: currentMonthStart, end: currentMonthEnd }))
     .reduce((sum, t) => sum + t.amount, 0);
 
   const currentMonthSavings = currentMonthIncome - currentMonthExpenses;
 
-  // First, let's fix the savingsRatio error by moving it outside the function
-  // Add this calculation after currentMonthSavings
-  const savingsRatio = currentMonthIncome > 0 
-    ? (currentMonthSavings / currentMonthIncome) * 100 
-    : 0;
+ const savingsRatio = currentMonthIncome > 0 ? (currentMonthSavings / currentMonthIncome) * 100 : 0;
 
-  // Add these calculations at the component level (near where we defined savingsRatio)
-  // Get unique categories from expenses
-  const categories = expenses.map(e => e.category);
+ const categories = filteredExpenses.map(e => e.category); // Use filtered expenses for category diversity within timeframe
   const uniqueCategories = new Set(categories).size;
-  const categoryDiversity = uniqueCategories > 0 
-    ? Math.min(uniqueCategories / 5, 1) * 100 
-    : 0;
+ const categoryDiversity = uniqueCategories > 0 ? Math.min(uniqueCategories / 5, 1) * 100 : 0;
 
-  // Calculate consistency - how regularly they're tracking finances
-  const oldestTransaction = useMemo(() => {
+ // Consistency calculation remains based on recent transactions (which use all data)
+ const oldestTransactionDate = useMemo(() => {
+    if (recentTransactions.length === 0) return new Date();
     try {
-      if (!recentTransactions || recentTransactions.length === 0) {
-        return new Date();
-      }
       return new Date(Math.min(...recentTransactions.map(t => new Date(t.date).getTime())));
-    } catch (error) {
-      console.error('Error calculating oldest transaction:', error);
-      return new Date();
-    }
+    } catch { return new Date(); }
   }, [recentTransactions]);
 
-  const daysSinceFirst = Math.max(1, Math.floor((new Date().getTime() - oldestTransaction.getTime()) / (1000 * 60 * 60 * 24)));
-  const avgTransactionsPerDay = recentTransactions && recentTransactions.length > 0 ? recentTransactions.length / daysSinceFirst : 0;
+ const daysSinceFirst = Math.max(1, Math.floor((new Date().getTime() - oldestTransactionDate.getTime()) / (1000 * 60 * 60 * 24)));
+ const avgTransactionsPerDay = recentTransactions.length / daysSinceFirst;
   const consistencyScore = Math.min(avgTransactionsPerDay * 10, 100);
 
-  // Then update the getFinancialHealthStatus function
-  const getFinancialHealthStatus = () => {
-    if (!recentTransactions || recentTransactions.length === 0) 
-      return { status: 'neutral', message: 'Not enough data yet', score: 0, advice: [] };
-
-    // Calculate overall financial health score (weighted average)
+ const getFinancialHealthStatus = useCallback(() => {
+     // Recalculate health score using potentially updated metrics
     const weights = { savings: 0.5, diversity: 0.3, consistency: 0.2 };
-    const healthScore = (
-      (savingsRatio * weights.savings) + 
-      (categoryDiversity * weights.diversity) + 
-      (consistencyScore * weights.consistency)
-    );
+     const healthScore = (savingsRatio * weights.savings) + (categoryDiversity * weights.diversity) + (consistencyScore * weights.consistency);
 
     let status = 'poor';
     let message = "Consider reviewing your financial habits.";
@@ -290,7 +220,7 @@ const Dashboard = () => {
     }
 
     // Provide tailored advice based on financial behavior
-    const advice = [];
+     const advice: string[] = [];
     if (savingsRatio < 20) {
       advice.push("Aim to save at least 20% of your income each month.");
     }
@@ -313,57 +243,125 @@ const Dashboard = () => {
       score: Math.round(healthScore),
       advice: advice.length > 0 ? advice : ["Keep up the good work!"]
     };
-  };
+ }, [savingsRatio, categoryDiversity, consistencyScore, totalIncome, totalExpenses, currentMonthSavings]); // Dependencies for health calculation
 
-  // Then add this to your dashboard
-  const financialHealth = useMemo(getFinancialHealthStatus, [recentTransactions, savingsRatio, categoryDiversity, consistencyScore]);
+ const financialHealth = useMemo(getFinancialHealthStatus, [getFinancialHealthStatus]);
 
-  // Add more detailed financial analytics
-  const topIncomeSources = income?.map(item => ({
-    description: item.category || 'Income',
-    amount: item.amount
-  })) || [];
+ // Top sources/categories (using filtered data)
+ const topIncomeSources = useMemo(() => {
+      // Group and sum filtered income
+      const grouped = filteredIncome.reduce((acc, item) => {
+          const key = item.description || 'Unspecified Income';
+          acc[key] = (acc[key] || 0) + item.amount;
+          return acc;
+      }, {} as Record<string, number>);
+      return Object.entries(grouped).map(([description, amount]) => ({ description, amount })).sort((a, b) => b.amount - a.amount);
+ }, [filteredIncome]);
 
-  const topExpenseCategories = expenses?.map(item => ({
-    name: item.category || 'Uncategorized',
-    amount: item.amount
-  })) || [];
+ const topExpenseCategories = useMemo(() => {
+      // Group and sum filtered expenses by category
+       const grouped = filteredExpenses.reduce((acc, item) => {
+          const key = item.category || 'Uncategorized';
+          acc[key] = (acc[key] || 0) + item.amount;
+          return acc;
+      }, {} as Record<string, number>);
+      return Object.entries(grouped).map(([name, amount]) => ({ name, amount })).sort((a, b) => b.amount - a.amount);
+ }, [filteredExpenses]);
+
+ // --- Process Recurring Data for Dashboard ---
+ const upcomingRecurring = useMemo(() => {
+     const today = new Date();
+     today.setHours(0, 0, 0, 0); // Start of today
+     const nextWeekEnd = addDays(today, 7); // End of 7 days from now
+     const currentMonthEnd = endOfMonth(today);
+
+     const activeRules = recurringRules.filter(rule => rule.is_active);
+
+     const next7Days: RecurringTransaction[] = [];
+     const thisMonth: RecurringTransaction[] = [];
+
+     activeRules.forEach(rule => {
+         try {
+           const nextDueDate = parseISO(rule.next_due_date); // Parse the date string
+           // Check if due date is valid and not in the past relative to today's start
+           if (!isNaN(nextDueDate.getTime()) && differenceInDays(nextDueDate, today) >= 0) {
+               // Check if within the next 7 days
+               if (isWithinInterval(nextDueDate, { start: today, end: nextWeekEnd })) {
+                   next7Days.push(rule);
+               }
+               // Check if within the current month (from today onwards)
+               if (isWithinInterval(nextDueDate, { start: today, end: currentMonthEnd })) {
+                   thisMonth.push(rule);
+               }
+           }
+         } catch (e) {
+             console.error("Error parsing date for recurring rule:", rule.id, rule.next_due_date, e);
+         }
+     });
+
+     // Sort by date
+     next7Days.sort((a, b) => parseISO(a.next_due_date).getTime() - parseISO(b.next_due_date).getTime());
+     thisMonth.sort((a, b) => parseISO(a.next_due_date).getTime() - parseISO(b.next_due_date).getTime());
+
+     const upcomingThisMonthTotal = thisMonth.reduce((acc, rule) => {
+         return acc + (rule.type === 'expense' ? rule.amount : -rule.amount); // Sum expenses, subtract income
+     }, 0);
+
+     return {
+         next7Days,
+         thisMonth,
+         upcomingThisMonthTotal, // Net total (expenses - income)
+     };
+ }, [recurringRules]);
+
+  // --- JSX ---
+  const [open, setOpen] = useState(false);
 
   return (
     <DashboardLayout>
       <div className="space-y-8">
         {/* Page header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <div className="flex flex-col sm:items-start gap-1">
+            <h1 className="text-4xl font-bold tracking-tight">Dashboard</h1>
             <p className="text-muted-foreground">Your financial overview at a glance</p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-3">
+
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div className="flex flex-wrap gap-3">
             <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-              <Button onClick={() => navigate('/income')} variant="outline" className="shadow-sm flex-1">
-                <Plus className="mr-2 h-4 w-4" />
-                Add Income
+                <Button onClick={() => navigate('/income')} variant="outline" className="shadow-sm flex-1 add-income-button">
+                  <Plus className="mr-2 h-4 w-4" /> Add Income
               </Button>
-              <Button onClick={() => navigate('/expenses')} className="flex-1">
-                <Plus className="mr-2 h-4 w-4" />
-                Add Expense
+                <Button onClick={() => navigate('/expenses')} className="flex-1 add-expense-button">
+                  <Plus className="mr-2 h-4 w-4" /> Add Expense
               </Button>
             </div>
             <div className="flex flex-wrap gap-2 w-full sm:w-auto">
               <Button onClick={() => navigate('/budget')} variant="outline" className="shadow-sm flex-1">
-                <Calculator className="mr-2 h-4 w-4" />
-                Budget
+                  <Calculator className="mr-2 h-4 w-4" /> Budget
               </Button>
               <Button onClick={() => navigate('/reports')} variant="outline" className="shadow-sm flex-1">
-                <ExternalLink className="mr-2 h-4 w-4" />
-                Reports
+                  <ExternalLink className="mr-2 h-4 w-4" /> Reports
               </Button>
+              </div>
             </div>
           </div>
         </div>
 
+        {/* === Onboarding Alert === */}
+        {!isLoading && filteredIncome.length === 0 && filteredExpenses.length === 0 && (
+          <Alert variant="default" className="bg-blue-50 border border-blue-200 text-blue-800">
+            <AlertTitle className="text-blue-900 font-semibold">Get Started with Diligence Finance!</AlertTitle>
+            <AlertDescription>
+              Record your first income or expense transaction to unlock insights and track your financial health.
+            </AlertDescription>
+          </Alert>
+        )}
+        {/* === End Onboarding Alert === */}
+
         {/* Timeframe selector */}
-        <Tabs value={timeframe} onValueChange={setTimeframe} className="w-full">
+        <Tabs value={timeframe} onValueChange={(value) => setTimeframe(value as 'week' | 'month' | 'year')} className="w-full">
           <TabsList className="grid w-full max-w-md grid-cols-3">
             <TabsTrigger value="week">This Week</TabsTrigger>
             <TabsTrigger value="month">This Month</TabsTrigger>
@@ -372,55 +370,71 @@ const Dashboard = () => {
         </Tabs>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="shadow-sm bg-white">
+        {isLoading ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                 {[...Array(6)].map((_, i) => <Card key={i} className="shadow-sm animate-pulse h-32"><CardHeader><div className="h-4 bg-muted rounded w-3/4 mb-2"></div><div className="h-8 bg-muted rounded w-1/2"></div></CardHeader></Card>)}
+            </div>
+        ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                <Card className="shadow-sm">
             <CardHeader className="pb-2">
-              <CardDescription>Total Income</CardDescription>
-              <CardTitle className="text-2xl flex items-center">
+                        <CardDescription>Total Income ({timeframe})</CardDescription>
+              <CardTitle className="text-xl sm:text-xl flex items-center">
                 {formatCurrency(totalIncome)}
                 <TrendingUp className="ml-2 h-5 w-5 text-income" />
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-xs text-muted-foreground">
-                From {income.length} transactions
+                            From {filteredIncome.length} transactions
               </div>
             </CardContent>
           </Card>
-
-          <Card className="shadow-sm bg-white">
+                <Card className="shadow-sm">
             <CardHeader className="pb-2">
-              <CardDescription>Total Expenses</CardDescription>
-              <CardTitle className="text-2xl flex items-center">
+                        <CardDescription>Total Expenses ({timeframe})</CardDescription>
+              <CardTitle className="text-xl sm:text-xl flex items-center">
                 {formatCurrency(totalExpenses)}
                 <TrendingDown className="ml-2 h-5 w-5 text-expense" />
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-xs text-muted-foreground">
-                From {expenses.length} transactions
+                            From {filteredExpenses.length} transactions
               </div>
             </CardContent>
           </Card>
-
-          <Card className="shadow-sm bg-white">
+                <Card className="shadow-sm">
             <CardHeader className="pb-2">
-              <CardDescription>Current Balance</CardDescription>
-              <CardTitle className={`text-2xl ${balance >= 0 ? 'text-income' : 'text-expense'}`}>
+                        <CardDescription>Net Balance ({timeframe})</CardDescription>
+              <CardTitle className={`text-xl sm:text-lg ${balance >= 0 ? 'text-income' : 'text-expense'}`}>
                 {formatCurrency(balance)}
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-xs text-muted-foreground">
-                {balance >= 0 ? 'You\'re on track!' : 'Spending exceeds income'}
+                            {balance >= 0 ? 'On track!' : 'Spending exceeds income'}
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card className="shadow-sm">
+                    <CardHeader className="pb-2">
+                        <CardDescription>Avg. Daily Expenses ({timeframe})</CardDescription>
+                        <CardTitle className="text-xl sm:text-xl flex items-center">
+                            {formatCurrency(averageDailyExpenses)}
+                             <Clock className="ml-2 h-5 w-5 text-muted-foreground" />
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-xs text-muted-foreground">
+                            Based on {numberOfDaysInFilter} days
               </div>
             </CardContent>
           </Card>
-
           <Card className="shadow-sm">
             <CardHeader className="pb-2">
-              <CardDescription>Monthly Savings</CardDescription>
-              <CardTitle className={`text-2xl ${currentMonthSavings >= 0 ? 'text-income' : 'text-expense'}`}>
+                        <CardDescription>Current Month Savings</CardDescription>
+              <CardTitle className={`text-xl sm:text-xl ${currentMonthSavings >= 0 ? 'text-income' : 'text-expense'}`}>
                 {formatCurrency(currentMonthSavings)}
               </CardTitle>
             </CardHeader>
@@ -432,13 +446,33 @@ const Dashboard = () => {
               </p>
             </CardContent>
           </Card>
-
           <Card className="shadow-sm">
-            <CardHeader>
-              <CardTitle>Financial Health</CardTitle>
-              <CardDescription>Based on your saving habits and activities</CardDescription>
+                    <CardHeader className="pb-2">
+                        <CardDescription>Upcoming Month Recurring</CardDescription>
+                        <CardTitle className={`text-xl sm:text-xl flex items-center ${upcomingRecurring.upcomingThisMonthTotal >= 0 ? 'text-expense' : 'text-income'}`}>
+                            {formatCurrency(Math.abs(upcomingRecurring.upcomingThisMonthTotal))}
+                            <Repeat className="ml-2 h-5 w-5 text-muted-foreground" />
+                        </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+                    <CardContent>
+                        <div className="text-xs text-muted-foreground">
+                            Net total of scheduled expenses minus income
+                        </div>
+                    </CardContent>
+                </Card>
+                <Dialog open={open} onOpenChange={setOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="primary" className="shadow-sm col-span-2 md:col-span-1 w-full md:w-auto">
+                      View Financial Health
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                      <DialogTitle>Financial Health</DialogTitle>
+                      <DialogDescription>
+                        Based on saving habits & activities
+                      </DialogDescription>
+                    </DialogHeader>
               <div className="relative pt-1">
                 <div className="flex mb-2 items-center justify-between">
                   <div>
@@ -482,13 +516,13 @@ const Dashboard = () => {
                   ))}
                 </ul>
               </div>
-            </CardContent>
-          </Card>
+                  </DialogContent>
+                </Dialog>
         </div>
+        )}
 
         {/* Charts section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Income vs Expenses chart */}
           <Card className="shadow-sm">
             <CardHeader>
               <CardTitle>Income vs Expenses</CardTitle>
@@ -500,7 +534,7 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent className="pt-2">
               <div className="h-[300px] w-full">
-                {loading ? (
+                        {isLoading ? (
                   <div className="h-full flex items-center justify-center">
                     <div className="animate-pulse text-muted-foreground">Loading chart...</div>
                   </div>
@@ -531,7 +565,6 @@ const Dashboard = () => {
             </CardContent>
           </Card>
 
-          {/* Expense Categories chart */}
           <Card className="shadow-sm">
             <CardHeader>
               <CardTitle>Expense Categories</CardTitle>
@@ -539,7 +572,7 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent className="pt-2">
               <div className="h-[300px] w-full">
-                {loading ? (
+                        {isLoading ? (
                   <div className="h-full flex items-center justify-center">
                     <div className="animate-pulse text-muted-foreground">Loading chart...</div>
                   </div>
@@ -578,6 +611,53 @@ const Dashboard = () => {
           </Card>
         </div>
 
+        {/* Upcoming Transactions List */}
+        <Card className="shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                    <CardTitle>Upcoming Recurring Transactions (Next 7 Days)</CardTitle>
+                    <CardDescription>Scheduled automatic payments and income.</CardDescription>
+                </div>
+                 <Button variant="outline" size="sm" className="h-8" onClick={() => navigate('/recurring')}>
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    Manage Rules
+                </Button>
+            </CardHeader>
+            <CardContent>
+                {isLoading ? (
+                     <p>Loading upcoming transactions...</p>
+                ) : upcomingRecurring.next7Days.length > 0 ? (
+                    <div className="space-y-4">
+                        {upcomingRecurring.next7Days.map((rule) => (
+                            <div key={rule.id} className="flex justify-between items-center p-2 rounded-lg hover:bg-muted/50 transition-colors">
+                                <div className="flex items-center space-x-4">
+                                    <div className={`h-10 w-10 rounded-full flex items-center justify-center ${rule.type === 'income' ? 'bg-income/10 text-income' : 'bg-expense/10 text-expense'}`}>
+                                        <Repeat className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                        <p className="font-medium text-sm">
+                                            {rule.category || rule.description || 'Recurring Item'}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                            Due: {formatDate(rule.next_due_date)} ({rule.frequency})
+                                        </p>
+                                    </div>
+                                </div>
+                                <p className={`font-medium ${rule.type === 'income' ? 'text-income' : 'text-expense'}`}>
+                                    {rule.type === 'income' ? '+' : '-'}
+                                    {formatCurrency(rule.amount)}
+                                </p>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-center py-6">
+                        <p className="text-muted-foreground">No recurring transactions due in the next 7 days.</p>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+
         {/* Recent transactions */}
         <Card className="shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between">
@@ -591,7 +671,7 @@ const Dashboard = () => {
             </Button>
           </CardHeader>
           <CardContent>
-            {loading ? (
+                {isLoading ? (
               <div className="space-y-4">
                 {[...Array(3)].map((_, i) => (
                   <div key={i} className="animate-pulse flex justify-between items-center p-2">
@@ -608,7 +688,7 @@ const Dashboard = () => {
               </div>
             ) : recentTransactions.length > 0 ? (
               <div className="space-y-4">
-                {recentTransactions && recentTransactions.map((transaction) => (
+                        {recentTransactions.map((transaction) => (
                   <div key={`${transaction.id}-${transaction.date}`} className="flex justify-between items-center p-2 rounded-lg hover:bg-muted/50 transition-colors">
                     <div className="flex items-center space-x-4">
                       <div className={`h-10 w-10 rounded-full flex items-center justify-center ${transaction.type === 'income' ? 'bg-income/10 text-income' : 'bg-expense/10 text-expense'}`}>
@@ -659,27 +739,29 @@ const Dashboard = () => {
             <CardDescription>Breakdown of your income and expenses</CardDescription>
           </CardHeader>
           <CardContent>
+                {isLoading ? ( <p>Loading analysis...</p> ) : (
             <div className="space-y-4">
               <div>
-                <h4 className="font-medium text-sm">Top Income Sources</h4>
-                {topIncomeSources && topIncomeSources.length > 0 && topIncomeSources.map((source, index) => (
+                            <h4 className="font-medium text-sm">Top Income Sources ({timeframe})</h4>
+                            {topIncomeSources.length > 0 ? topIncomeSources.map((source, index) => (
                   <div key={`income-${source.description}-${index}`} className="flex justify-between mt-2">
                     <span className="text-sm">{source.description || 'Unnamed'}</span>
                     <span className="text-sm font-medium">{formatCurrency(source.amount)}</span>
                   </div>
-                ))}
+                            )) : <p className="text-xs text-muted-foreground">No income in this period.</p>}
               </div>
               
               <div>
-                <h4 className="font-medium text-sm">Top Expense Categories</h4>
-                {topExpenseCategories && topExpenseCategories.length > 0 && topExpenseCategories.map((category, index) => (
+                            <h4 className="font-medium text-sm">Top Expense Categories ({timeframe})</h4>
+                            {topExpenseCategories.length > 0 ? topExpenseCategories.map((category, index) => (
                   <div key={`expense-${category.name}-${index}`} className="flex justify-between mt-2">
                     <span className="text-sm">{category.name}</span>
                     <span className="text-sm font-medium">{formatCurrency(category.amount)}</span>
                   </div>
-                ))}
+                            )) : <p className="text-xs text-muted-foreground">No expenses in this period.</p>}
               </div>
             </div>
+                )}
           </CardContent>
         </Card>
       </div>

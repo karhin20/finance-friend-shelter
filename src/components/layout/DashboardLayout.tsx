@@ -1,8 +1,9 @@
-
 import { ReactNode, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Navbar } from './Navbar';
+import { Navbar } from '@/components/layout/Navbar';
 import { useAuth } from '@/contexts/AuthContext';
+import { Sidebar, SidebarProvider } from '@/components/ui/sidebar';
+import { GlobalDateFilter } from '@/components/layout/GlobalDateFilter';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -33,11 +34,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="pt-20 pb-8 px-4 container mx-auto max-w-6xl animate-fade-in">
-        {children}
-      </main>
-    </div>
+    <SidebarProvider>
+      <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr] pt-16">
+        <Navbar />
+        <Sidebar />
+        <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 bg-muted/40 overflow-auto">
+          {children}
+        </main>
+      </div>
+    </SidebarProvider>
   );
 }

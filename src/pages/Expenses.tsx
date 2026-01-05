@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,59 +8,64 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
-import { CalendarIcon, Plus, Search, ArrowUpDown, Trash2, Filter, Pencil } from 'lucide-react';
+import { CalendarIcon, Plus, Search, ArrowUpDown, Trash2, Filter, Pencil, Loader2 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase, formatCurrency, formatDate } from '@/lib/supabase';
+import { useFinance } from '@/contexts/FinanceContext';
+import { Expense, formatCurrency, formatDate, Category } from '@/lib/supabase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Settings as SettingsIcon } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Checkbox } from '@/components/ui/checkbox';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
+import { addWeeks, addMonths, addYears, startOfWeek, startOfMonth, isWithinInterval } from 'date-fns';
 
-// Predefined expense categories
-const EXPENSE_CATEGORIES = [
-  "Food & Dining",
-  "Housing",
-  "Transportation",
-  "Entertainment",
-  "Shopping",
-  "Utilities",
-  "Internet",
-  "Healthcare",
-  "Education",
-  "Personal Care",
-  "Travel",
-  "Gifts & Donations",
-  "Church",
-  "Business",
-  "Taxes",
-  "Other"
-];
-
-// Let's update the Expense type if it's defined in this file
-type Expense = {
-  id: string;
-  user_id: string;
-  amount: number;
-  category: string;
-  date: string;
-  description?: string | null;
-  month?: string; // Add month field
+const calculateNextOccurrence = (startDate: Date, frequency: 'weekly' | 'monthly' | 'yearly'): Date => {
+  switch (frequency) {
+    case 'weekly':
+      return addWeeks(startDate, 1);
+    case 'monthly':
+      return addMonths(startDate, 1);
+    case 'yearly':
+      return addYears(startDate, 1);
+    default:
+      // Should not happen with type safety
+      console.warn("Invalid frequency provided to calculateNextOccurrence");
+      return startDate;
+  }
 };
 
 const ExpensesPage = () => {
-  const { user } = useAuth();
   const { toast } = useToast();
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const {
+    expensesQuery,
+    addExpenseMutation,
+    updateExpenseMutation,
+    deleteExpenseMutation,
+    categoriesQuery
+  } = useFinance();
+
+  const { data: expenses = [], isLoading: isExpensesLoading, isError: isExpensesError, error: expensesError } = expensesQuery;
+  const { data: allCategories = [], isLoading: isLoadingCategories } = categoriesQuery;
+
+  // Filter categories for expense type
+  const expenseCategories = useMemo(() => allCategories.filter(c => c.type === 'expense'), [allCategories]);
 
   // Form state
   const [amount, setAmount] = useState<string>('');
   const [category, setCategory] = useState<string>('');
   const [date, setDate] = useState<Date>(new Date());
   const [description, setDescription] = useState<string>('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Add recurring state
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [frequency, setFrequency] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
+  const [createInitialTransaction, setCreateInitialTransaction] = useState(true);
 
   // Filtering and sorting
   const [searchQuery, setSearchQuery] = useState('');
@@ -71,7 +76,6 @@ const ExpensesPage = () => {
 
   // Delete state
   const [expenseToDelete, setExpenseToDelete] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Edit state
@@ -81,179 +85,13 @@ const ExpensesPage = () => {
   const [editCategory, setEditCategory] = useState('');
   const [editDate, setEditDate] = useState<Date>(new Date());
   const [editDescription, setEditDescription] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
 
-  // Fetch expense data
-  useEffect(() => {
-    if (!user) return;
-
-    const fetchExpenses = async () => {
-      setLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('expenses')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('date', { ascending: false });
-
-        if (error) throw error;
-        setExpenses(data || []);
-      } catch (error: any) {
-        console.error('Error fetching expenses:', error.message);
-        toast({
-          title: 'Error',
-          description: 'Failed to load expense data. Please try again.',
-          variant: 'destructive',
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchExpenses();
-  }, [user, toast]);
-
-  // Add new expense
-  const handleAddExpense = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!user || !amount || !category || !date) {
-      toast({
-        title: 'Missing information',
-        description: 'Please fill in all required fields.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    // Parse amount as number and validate
-    const amountNum = parseFloat(amount);
-    if (isNaN(amountNum) || amountNum <= 0) {
-      toast({
-        title: 'Invalid amount',
-        description: 'Please enter a valid positive number.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      // Add month field derived from date
-      const expenseDate = new Date(date);
-      const month = `${expenseDate.getFullYear()}-${String(expenseDate.getMonth() + 1).padStart(2, '0')}`;
-      
-      // Create the expense data without the month field
-      const expenseData: {
-        user_id: string;
-        amount: number;
-        category: string;
-        date: string;
-        description: string | null;
-        month?: string;
-      } = {
-        user_id: user.id,
-        amount: amountNum,
-        category,
-        date: date.toISOString(),
-        description: description.trim() || null
-      };
-      
-      // Only add the month field if it exists in the database schema
-      try {
-        // First try with month field
-        const { error } = await supabase.from('expenses').insert([{
-          ...expenseData,
-          month
-        }]);
-        
-        if (error) {
-          // If error contains message about month column, try without it
-          if (error.message && error.message.includes('month')) {
-            console.log('Month column not found, trying without it');
-            const { error: error2 } = await supabase.from('expenses').insert([expenseData]);
-            if (error2) throw error2;
-          } else {
-            throw error;
-          }
-        }
-      } catch (insertError: any) {
-        throw insertError;
-      }
-
-      // Fetch the latest expenses to update the list
-      const { data: updatedExpenses } = await supabase
-        .from('expenses')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('date', { ascending: false });
-
-      // Reset form and update expense list
-      setAmount('');
-      setCategory('');
-      setDate(new Date());
-      setDescription('');
-      setExpenses(updatedExpenses || []);
-
-      toast({
-        title: 'Success',
-        description: `Successfully added ${formatCurrency(amountNum)} expense.`,
-      });
-    } catch (error: any) {
-      console.error('Error adding expense:', error);
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to add expense. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Delete expense
-  const confirmDelete = (id: string) => {
-    setExpenseToDelete(id);
-    setDeleteDialogOpen(true);
-  };
-
-  const handleDelete = async () => {
-    if (!user || !expenseToDelete) return;
-    
-    setIsDeleting(true);
-    
-    try {
-      const { error } = await supabase
-        .from('expenses')
-        .delete()
-        .eq('id', expenseToDelete)
-        .eq('user_id', user.id);
-      
-      if (error) throw error;
-      
-      // Update the local state
-      setExpenses(expenses.filter(expense => expense.id !== expenseToDelete));
-      
-      toast({
-        title: 'Expense deleted',
-        description: 'Your expense has been deleted successfully.',
-      });
-      
-      setDeleteDialogOpen(false);
-    } catch (error: any) {
-      console.error('Error deleting expense:', error);
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to delete expense. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsDeleting(false);
-    }
-  };
+  // +++ ADDED: Local state for timeframe filtering +++
+  const [localTimeframe, setLocalTimeframe] = useState<'week' | 'month' | 'all'>('all');
 
   // Filtering and sorting logic
-  const filteredExpenses = expenses.filter(expense => {
+  const filteredExpenses = useMemo(() => {
+    let filtered = expenses.filter(expense => {
     const matchesSearch = 
       expense.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       expense.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -264,6 +102,19 @@ const ExpensesPage = () => {
     
     return matchesSearch && matchesCategory;
   });
+
+    const today = new Date();
+    const startOfWeekDate = startOfWeek(today, { weekStartsOn: 0 });
+    const startOfMonthDate = startOfMonth(today);
+
+    if (localTimeframe === 'week') {
+      filtered = filtered.filter(item => isWithinInterval(new Date(item.date), { start: startOfWeekDate, end: today }));
+    } else if (localTimeframe === 'month') {
+      filtered = filtered.filter(item => isWithinInterval(new Date(item.date), { start: startOfMonthDate, end: today }));
+    }
+
+    return filtered;
+  }, [expenses, searchQuery, categoryFilter, localTimeframe]);
 
   const sortedExpenses = [...filteredExpenses].sort((a, b) => {
     if (!sortConfig) return 0;
@@ -309,6 +160,11 @@ const ExpensesPage = () => {
     return acc;
   }, {});
 
+  // Update unique categories for filtering dropdown based on fetched expense categories
+  const uniqueCategoriesForFilter = useMemo(() =>
+      [...new Set(expenseCategories.map(cat => cat.name))]
+  , [expenseCategories]);
+
   // Add a function to open the edit dialog
   const openEditDialog = (expense: Expense) => {
     setEditingExpense(expense);
@@ -323,7 +179,7 @@ const ExpensesPage = () => {
   const handleEditExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!user || !editingExpense) return;
+    if (!editingExpense || !editCategory) return;
     
     // Validate the amount
     const amountNum = parseFloat(editAmount);
@@ -336,91 +192,157 @@ const ExpensesPage = () => {
       return;
     }
     
-    setIsEditing(true);
+    updateExpenseMutation.mutate({
+      id: editingExpense.id,
+      updates: {
+        amount: amountNum,
+        category: editCategory,
+        date: editDate.toISOString(),
+        description: editDescription.trim() || null
+      }
+    }, {
+      onSuccess: () => {
+        setEditDialogOpen(false);
+        toast({
+          title: 'Success',
+          description: 'Your expense has been updated successfully.',
+        });
+      },
+      onError: (error) => {
+        console.error('Error updating expense:', error);
+        toast({
+          title: 'Error',
+          description: error instanceof Error ? error.message : 'Failed to update expense. Please try again.',
+          variant: 'destructive',
+        });
+      }
+    });
+  };
+
+  const confirmDelete = (id: string) => {
+    setExpenseToDelete(id);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!expenseToDelete) return;
     
-    try {
-      // Generate month field from the date
-      const expenseDate = new Date(editDate);
-      const month = `${expenseDate.getFullYear()}-${String(expenseDate.getMonth() + 1).padStart(2, '0')}`;
-      
-      // Create update data without the month field
-      const updateData: {
-        amount: number;
-        category: string;
-        date: string;
-        description: string | null;
-        month?: string;
-      } = {
-        amount: amountNum,
-        category: editCategory,
-        date: editDate.toISOString(),
-        description: editDescription || null
-      };
-      
-      try {
-        // First try updating with month field
-        const { error } = await supabase
-          .from('expenses')
-          .update({
-            ...updateData,
-            month
-          })
-          .eq('id', editingExpense.id)
-          .eq('user_id', user.id);
-        
-        if (error) {
-          // If error contains message about month column, try without it
-          if (error.message && error.message.includes('month')) {
-            console.log('Month column not found, trying update without it');
-            const { error: error2 } = await supabase
-              .from('expenses')
-              .update(updateData)
-              .eq('id', editingExpense.id)
-              .eq('user_id', user.id);
-            
-            if (error2) throw error2;
-          } else {
-            throw error;
-          }
-        }
-      } catch (updateError: any) {
-        throw updateError;
+    deleteExpenseMutation.mutate(expenseToDelete, {
+      onSuccess: () => {
+        toast({
+          title: 'Expense deleted',
+          description: 'Your expense has been deleted successfully.',
+        });
+        setDeleteDialogOpen(false);
+        setExpenseToDelete(null);
+      },
+      onError: (error) => {
+        console.error('Error deleting expense:', error);
+        toast({
+          title: 'Error Deleting',
+          description: error instanceof Error ? error.message : 'Failed to delete expense. Please try again.',
+          variant: 'destructive',
+        });
       }
-      
-      // Update the local state
-      const updatedExpense = {
-        ...editingExpense,
-        amount: amountNum,
-        category: editCategory,
-        date: editDate.toISOString(),
-        description: editDescription || null
-      };
-      
-      // Conditionally add month field to the local state if it exists in the original expense
-      if (editingExpense.month !== undefined) {
-        updatedExpense.month = month;
-      }
-      
-      setExpenses(expenses.map(item => 
-        item.id === editingExpense.id ? updatedExpense : item
-      ));
-      
-      toast({
-        title: 'Success',
-        description: 'Your expense has been updated successfully.',
-      });
-      
-      setEditDialogOpen(false);
-    } catch (error: any) {
-      console.error('Error updating expense:', error);
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to update expense. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsEditing(false);
+    });
+  };
+
+  // --- Handle Add Expense ---
+  const handleAddExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // Basic validation
+    if (!amount || !date || !category || !user) {
+       toast({ title: "Missing Fields", description: "Amount, Date, and Category are required.", variant: "destructive" });
+       return;
     }
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum) || amountNum <= 0) {
+       toast({ title: "Invalid Amount", description: "Please enter a valid positive amount.", variant: "destructive" });
+       return;
+    }
+
+    if (isRecurring) {
+      // Determine the correct next_due_date
+      const startDateForRule = date; // The date selected in the form
+      const nextDueDateForDb = createInitialTransaction
+        ? calculateNextOccurrence(startDateForRule, frequency) // Calculate next occurrence if adding initial
+        : startDateForRule; // Otherwise, the first due date is the start date
+
+      // 1. Create the Recurring Rule
+      try {
+        const { error: recurringError } = await supabase.from('recurring_transactions').insert([{
+          user_id: user.id,
+          type: 'expense',
+          amount: amountNum,
+          category: category,
+          description: description.trim() || null,
+          frequency: frequency,
+          start_date: format(startDateForRule, 'yyyy-MM-dd'), // Use the selected date
+          next_due_date: format(nextDueDateForDb, 'yyyy-MM-dd'), // Use the calculated date
+          is_active: true
+        }]);
+        if (recurringError) throw recurringError;
+
+        toast({ title: "Recurring Expense Rule Saved", description: `Will add ${formatCurrency(amountNum)} ${frequency}.` });
+
+        // 2. Optionally Add the Initial Transaction (using the selected date)
+        if (createInitialTransaction) {
+          addExpenseMutation.mutate({
+            amount: amountNum,
+            date: startDateForRule.toISOString(), // Use the selected date for the initial transaction
+            category: category,
+            description: description.trim() || null,
+          }, {
+            onSuccess: () => {
+              toast({ title: "Initial Expense Added", description: "First transaction recorded." });
+              // Reset form only after both potentially succeed
+              setAmount(''); setDate(new Date()); setCategory(''); setDescription(''); setIsRecurring(false); setFrequency('monthly'); setCreateInitialTransaction(true);
+            },
+            onError: (error) => {
+              console.error("Error adding initial expense:", error);
+              toast({ title: "Error Adding Initial Expense", description: `Recurring rule saved, but failed to add initial transaction: ${error.message}`, variant: "destructive" });
+              // Reset form partially? Or leave as is? Consider UX.
+              setAmount(''); setDate(new Date()); setCategory(''); setDescription(''); setIsRecurring(false); setFrequency('monthly'); setCreateInitialTransaction(true);
+            }
+          });
+          } else {
+           // Reset form if only rule was created
+           setAmount(''); setDate(new Date()); setCategory(''); setDescription(''); setIsRecurring(false); setFrequency('monthly'); setCreateInitialTransaction(true);
+        }
+
+      } catch (error: any) {
+        console.error("Error saving recurring expense:", error);
+        toast({ title: "Error Saving Rule", description: `Failed to save recurring rule: ${error.message}`, variant: "destructive" });
+      }
+    } else {
+      // --- Add Single Expense Transaction ---
+      addExpenseMutation.mutate({
+        amount: amountNum,
+        date: date.toISOString(), // Use the selected date
+        category: category,
+        description: description.trim() || null,
+      }, {
+        onSuccess: () => {
+          setAmount(''); setDate(new Date()); setCategory(''); setDescription(''); setIsRecurring(false); setFrequency('monthly'); setCreateInitialTransaction(true); // Reset all form fields
+          toast({ title: "Expense Added", description: "Your expense has been recorded." });
+        },
+        onError: (error) => {
+          console.error("Error adding expense:", error);
+          toast({ title: "Error", description: `Failed to add expense: ${error.message}`, variant: "destructive" });
+        }
+      });
+    }
+  };
+
+  // Determine Button Text
+  const getButtonText = () => {
+    if (addExpenseMutation.isLoading || updateExpenseMutation.isLoading) {
+      return "Saving...";
+    }
+    if (isRecurring) {
+      return createInitialTransaction ? "Save Rule & Add Initial" : "Save Recurring Rule";
+    }
+    return "Add Expense";
   };
 
   return (
@@ -431,6 +353,22 @@ const ExpensesPage = () => {
           <h1 className="text-3xl font-bold tracking-tight">Expenses</h1>
           <p className="text-muted-foreground">Track and manage your expenses</p>
         </div>
+
+        {/* === Onboarding Alert === */}
+        {!isLoadingCategories && expenseCategories.length === 0 && (
+          <Alert variant="default" className="bg-blue-50 border border-blue-200 text-blue-800">
+            <SettingsIcon className="h-4 w-4 !text-blue-600" />
+            <AlertTitle className="text-blue-900 font-semibold">Set Up Your Expense Categories!</AlertTitle>
+            <AlertDescription>
+              You haven't added any expense categories yet. Go to{' '}
+              <Link to="/settings" className="font-medium underline hover:text-blue-900">
+                Settings &gt; Categories
+              </Link>
+              {' '}to create categories like "Rent", "Food", etc., before adding expenses.
+            </AlertDescription>
+          </Alert>
+        )}
+        {/* === End Onboarding Alert === */}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Add Expense Form */}
@@ -459,16 +397,22 @@ const ExpensesPage = () => {
 
                 <div className="space-y-2">
                   <Label htmlFor="category">Category</Label>
-                  <Select value={category} onValueChange={setCategory} required>
+                  <Select value={category} onValueChange={setCategory} required disabled={isLoadingCategories || expenseCategories.length === 0}>
                     <SelectTrigger id="category">
-                      <SelectValue placeholder="Select category" />
+                      <SelectValue placeholder={
+                        isLoadingCategories ? "Loading..." :
+                        expenseCategories.length === 0 ? "Add categories in Settings" :
+                        "Select category"
+                      } />
                     </SelectTrigger>
                     <SelectContent>
-                      {EXPENSE_CATEGORIES.map((cat) => (
-                        <SelectItem key={cat} value={cat || "uncategorized"}>
-                          {cat}
+                      {!isLoadingCategories && expenseCategories.length > 0 && (
+                        expenseCategories.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.name}>
+                            {cat.name}
                         </SelectItem>
-                      ))}
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -510,11 +454,65 @@ const ExpensesPage = () => {
                     onChange={(e) => setDescription(e.target.value)}
                   />
                 </div>
+
+                {/* === Add Recurring Options === */}
+                <div className="space-y-2 pt-2 border-t">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="recurring-expense"
+                      checked={isRecurring}
+                      onCheckedChange={(checked) => {
+                          setIsRecurring(checked === true);
+                          // Reset createInitialTransaction when unchecking recurring
+                          if (checked !== true) setCreateInitialTransaction(true);
+                      }}
+                      disabled={expenseCategories.length === 0} // Disable if no categories
+                    />
+                    <Label htmlFor="recurring-expense" className="font-medium">Set as Recurring Expense?</Label>
+                  </div>
+
+                  {isRecurring && (
+                    <div className="space-y-4 pl-6 pt-2">
+                      {/* Frequency Select */}
+                      <div>
+                          <Label htmlFor="frequency-expense">Frequency</Label>
+                          <Select value={frequency} onValueChange={(v: any) => setFrequency(v)} required={isRecurring}>
+                            <SelectTrigger id="frequency-expense">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="weekly">Weekly</SelectItem>
+                              <SelectItem value="monthly">Monthly</SelectItem>
+                              <SelectItem value="yearly">Yearly</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Starts on the selected date ({format(date, "PPP")}).
+                          </p>
+                      </div>
+                      {/* New Checkbox for Initial Transaction */}
+                      <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="create-initial-expense"
+                            checked={createInitialTransaction}
+                            onCheckedChange={(checked) => setCreateInitialTransaction(checked === true)}
+                          />
+                          <Label htmlFor="create-initial-expense" className="text-sm font-normal">Add first transaction now?</Label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {/* === End Recurring Options === */}
+
               </CardContent>
               <CardFooter>
-                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={addExpenseMutation.isLoading || expenseCategories.length === 0}
+                >
                   <Plus className="mr-2 h-4 w-4" />
-                  {isSubmitting ? "Adding..." : "Add Expense"}
+                  {getButtonText()}
                 </Button>
               </CardFooter>
             </form>
@@ -545,27 +543,48 @@ const ExpensesPage = () => {
                 {/* Category filter */}
                 <div className="flex items-center">
                   <Filter className="mr-2 h-4 w-4 text-muted-foreground" />
-                  <Select
-                    value={categoryFilter}
-                    onValueChange={setCategoryFilter}
-                  >
+                  <Select value={categoryFilter} onValueChange={setCategoryFilter} disabled={isLoadingCategories}>
                     <SelectTrigger>
                       <SelectValue placeholder="All Categories" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Categories</SelectItem>
-                      {uniqueCategories.map((cat) => (
-                        <SelectItem key={cat} value={cat || "uncategorized"}>
-                          {cat || "Uncategorized"}
+                      {uniqueCategoriesForFilter.map((catName) => (
+                        <SelectItem key={catName} value={catName || "uncategorized"}>
+                          {catName || "Uncategorized"}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
+              {/* +++ ADDED: Timeframe filter buttons +++ */}
+              <div className="flex space-x-2 mt-4">
+                <Button
+                  variant={localTimeframe === 'week' ? 'default' : 'outline'}
+                  onClick={() => setLocalTimeframe('week')}
+                  size="sm"
+                >
+                  This Week
+                </Button>
+                <Button
+                  variant={localTimeframe === 'month' ? 'default' : 'outline'}
+                  onClick={() => setLocalTimeframe('month')}
+                  size="sm"
+                >
+                  This Month
+                </Button>
+                <Button
+                  variant={localTimeframe === 'all' ? 'default' : 'outline'}
+                  onClick={() => setLocalTimeframe('all')}
+                  size="sm"
+                >
+                  All Time
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              {loading ? (
+              {isExpensesLoading ? (
                 <div className="space-y-4 animate-pulse">
                   {[...Array(5)].map((_, i) => (
                     <div key={i} className="flex justify-between p-2">
@@ -573,6 +592,10 @@ const ExpensesPage = () => {
                       <div className="h-6 w-20 bg-muted rounded"></div>
                     </div>
                   ))}
+                </div>
+              ) : isExpensesError ? (
+                <div className="text-center py-12 text-destructive">
+                  <p>Error loading expenses: {expensesError?.message || 'Unknown error'}</p>
                 </div>
               ) : sortedExpenses.length > 0 ? (
                 <div className="rounded-md border">
@@ -639,6 +662,7 @@ const ExpensesPage = () => {
                                 onClick={() => openEditDialog(expense)}
                                 className="text-muted-foreground hover:text-primary"
                                 title="Edit"
+                                disabled={updateExpenseMutation.isLoading || deleteExpenseMutation.isLoading}
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
@@ -669,7 +693,7 @@ const ExpensesPage = () => {
         </div>
         
         {/* Category summary */}
-        {Object.keys(expensesByCategory).length > 0 && (
+        {Object.keys(expensesByCategory).length > 0 && !isExpensesLoading && (
           <Card className="shadow-sm">
             <CardHeader>
               <CardTitle>Expenses by Category</CardTitle>
@@ -677,7 +701,7 @@ const ExpensesPage = () => {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                {Object.entries(expensesByCategory).map(([category, amount]) => (
+                {Object.entries(expensesByCategory).sort(([, a], [, b]) => b - a).map(([category, amount]) => (
                   <div key={category} className="flex items-center justify-between p-3 rounded-lg border">
                     <span className="font-medium">{category}</span>
                     <span className="text-expense">{formatCurrency(amount)}</span>
@@ -707,16 +731,23 @@ const ExpensesPage = () => {
             <Button 
               variant="outline" 
               onClick={() => setDeleteDialogOpen(false)}
-              disabled={isDeleting}
+              disabled={deleteExpenseMutation.isLoading}
             >
               Cancel
             </Button>
             <Button 
               variant="destructive" 
               onClick={handleDelete}
-              disabled={isDeleting}
+              disabled={deleteExpenseMutation.isLoading}
             >
-              {isDeleting ? "Deleting..." : "Delete"}
+              {deleteExpenseMutation.isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -732,7 +763,7 @@ const ExpensesPage = () => {
             </DialogDescription>
           </DialogHeader>
           
-          <form onSubmit={handleEditExpense} className="space-y-4 py-2">
+          <form onSubmit={(e) => { e.preventDefault(); handleEditExpense(e); }} className="space-y-4 py-2">
             <div className="space-y-2">
               <Label htmlFor="editAmount">Amount</Label>
               <Input
@@ -749,20 +780,20 @@ const ExpensesPage = () => {
             
             <div className="space-y-2">
               <Label htmlFor="editCategory">Category</Label>
-              <Select 
-                value={editCategory} 
-                onValueChange={setEditCategory}
-                required
-              >
-                <SelectTrigger id="editCategory">
+              <Select value={editCategory} onValueChange={setEditCategory} required>
+                <SelectTrigger id="editCategory" disabled={isLoadingCategories}>
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
                 <SelectContent>
-                  {EXPENSE_CATEGORIES.map((cat) => (
-                    <SelectItem key={`edit-${cat}`} value={cat || "uncategorized"}>
-                      {cat}
+                  {isLoadingCategories ? (
+                    <SelectItem value="loading" disabled>Loading...</SelectItem >
+                  ) : (
+                    expenseCategories.map((cat) => (
+                      <SelectItem key={`edit-${cat.id}`} value={cat.name}>
+                        {cat.name}
                     </SelectItem>
-                  ))}
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -810,15 +841,15 @@ const ExpensesPage = () => {
                 variant="outline" 
                 onClick={() => setEditDialogOpen(false)}
                 type="button"
-                disabled={isEditing}
+                disabled={updateExpenseMutation.isLoading}
               >
                 Cancel
               </Button>
               <Button 
                 type="submit"
-                disabled={isEditing}
+                disabled={updateExpenseMutation.isLoading}
               >
-                {isEditing ? "Saving..." : "Save Changes"}
+                {updateExpenseMutation.isLoading ? "Saving..." : "Save Changes"}
               </Button>
             </DialogFooter>
           </form>

@@ -10,13 +10,15 @@ import {
   Menu,
   X,
   PiggyBank,
-  Calculator
+  Calculator,
+  Repeat
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 type NavItem = {
   icon: React.ReactNode;
@@ -31,6 +33,7 @@ const navItems: NavItem[] = [
   { icon: <PiggyBank className="h-4 w-4" />, label: 'Savings', path: '/savings' },
   { icon: <BarChart3 className="h-4 w-4" />, label: 'Reports', path: '/reports' },
   { icon: <Calculator className="h-4 w-4" />, label: 'Budget', path: '/budget' },
+  { icon: <Repeat className="h-4 w-4" />, label: 'Recurring', path: '/recurring' },
   { icon: <Settings className="h-4 w-4" />, label: 'Settings', path: '/settings' },
 ];
 
@@ -94,12 +97,13 @@ export function Navbar() {
                   key={item.path}
                   to={item.path}
                   className={cn(
-                    'nav-link',
-                    location.pathname === item.path && 'nav-link-active'
+                    'flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-muted hover:text-primary',
+                    location.pathname === item.path && 'bg-muted text-primary'
                   )}
+                  title={item.label}
                 >
                   {item.icon}
-                  <span>{item.label}</span>
+                  <span className="hidden lg:inline">{item.label}</span>
                 </Link>
               ))}
             </nav>
@@ -107,6 +111,9 @@ export function Navbar() {
         </div>
 
         <div className="flex items-center gap-2">
+          <div className="mr-4">
+            <ThemeToggle />
+          </div>
           {/* User avatar & dropdown */}
           <Avatar className="h-8 w-8">
             <AvatarFallback className="bg-primary text-primary-foreground">
@@ -166,8 +173,8 @@ export function Navbar() {
                   to={item.path}
                   onClick={() => setIsOpen(false)}
                   className={cn(
-                    "nav-link py-3 my-1",
-                    location.pathname === item.path && 'nav-link-active'
+                    'flex items-center gap-3 rounded-md px-3 py-3 my-1 text-base font-medium text-muted-foreground hover:bg-muted hover:text-primary',
+                    location.pathname === item.path && 'bg-muted text-primary'
                   )}
                 >
                   {item.icon}

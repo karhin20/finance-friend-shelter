@@ -7,8 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';
-import { format } from 'date-fns';
-import { CalendarIcon, Plus, PiggyBank, ArrowUpDown, Trash2, Pencil, CheckCircle, Loader2 } from 'lucide-react';
+import { format, differenceInWeeks, differenceInMonths, isAfter, startOfDay } from 'date-fns';
+import { CalendarIcon, Plus, PiggyBank, ArrowUpDown, Trash2, Pencil, CheckCircle, Loader2, Target, TrendingUp } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -42,6 +42,27 @@ type SavingFormData = {
   date: Date;
   targetDate?: Date;
   description: string;
+};
+
+// --- Helper Function for Projections ---
+const calculateProjections = (saving: Saving): { weekly: number | null; monthly: number | null; remainingAmount: number } => {
+  const now = startOfDay(new Date());
+  const targetDate = saving.target_date ? startOfDay(new Date(saving.target_date)) : null;
+  const goalAmount = saving.goal_amount ?? 0;
+  const currentAmount = saving.amount;
+  const remainingAmount = Math.max(0, goalAmount - currentAmount);
+
+  if (!targetDate || !isAfter(targetDate, now) || remainingAmount <= 0 || goalAmount <= 0) {
+    return { weekly: null, monthly: null, remainingAmount };
+  }
+
+  const weeksRemaining = differenceInWeeks(targetDate, now, { roundingMethod: 'ceil' });
+  const monthsRemaining = differenceInMonths(targetDate, now, { roundingMethod: 'ceil' });
+
+  const weekly = weeksRemaining > 0 ? remainingAmount / weeksRemaining : null;
+  const monthly = monthsRemaining > 0 ? remainingAmount / monthsRemaining : null;
+
+  return { weekly, monthly, remainingAmount };
 };
 
 // --- Savings Page Component ---
@@ -439,10 +460,10 @@ const SavingsPage = () => {
                   <TableHeader>
                     <TableRow>
                       <SortableTableHead sortKey="title" currentSort={sortConfig} requestSort={requestSort}>Title</SortableTableHead>
-                      <SortableTableHead sortKey="amount" currentSort={sortConfig} requestSort={requestSort}>Current Amount</SortableTableHead>
-                      <SortableTableHead sortKey="goal_amount" currentSort={sortConfig} requestSort={requestSort}>Goal Amount</SortableTableHead>
+                      <SortableTableHead sortKey="amount" currentSort={sortConfig} requestSort={requestSort}>Current</SortableTableHead>
+                      <SortableTableHead sortKey="goal_amount" currentSort={sortConfig} requestSort={requestSort}>Goal</SortableTableHead>
                       <SortableTableHead sortKey="progress" currentSort={sortConfig} requestSort={requestSort}>Progress</SortableTableHead>
-                      <SortableTableHead sortKey="date" currentSort={sortConfig} requestSort={requestSort}>Date Started</SortableTableHead>
+                      <TableHead>Projection (per wk/mo)</TableHead>
                       <SortableTableHead sortKey="target_date" currentSort={sortConfig} requestSort={requestSort}>Target Date</SortableTableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
@@ -451,14 +472,16 @@ const SavingsPage = () => {
                     {sortedSavings.map((saving) => {
                       const progress = getProgress(saving);
                       const isCompleted = saving.goal_amount && saving.amount >= saving.goal_amount;
+                      const { weekly, monthly, remainingAmount } = calculateProjections(saving); // Calculate projections
+
                       return (
                       <TableRow key={saving.id} className={cn(isCompleted && "bg-green-50 dark:bg-green-900/20")}>
-                        <TableCell className="font-medium">{saving.title}</TableCell>
+                        <TableCell className="font-medium max-w-[150px] truncate" title={saving.title}>{saving.title}</TableCell>
                         <TableCell>{formatCurrency(saving.amount)}</TableCell>
                         <TableCell>{saving.goal_amount ? formatCurrency(saving.goal_amount) : <span className="text-muted-foreground text-xs">N/A</span>}</TableCell>
                         <TableCell>
                           {saving.goal_amount ? (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 min-w-[120px]"> {/* Ensure minimum width */}
                               <Progress value={progress} className="h-2 flex-grow" />
                                <span className="text-xs font-medium w-10 text-right">
                                 {progress.toFixed(0)}%
@@ -469,7 +492,20 @@ const SavingsPage = () => {
                              <span className="text-muted-foreground text-xs">No goal set</span>
                           )}
                         </TableCell>
-                        <TableCell>{formatDate(saving.date)}</TableCell>
+                        <TableCell className="text-xs">
+                          {isCompleted ? (
+                            <span className="text-green-600 flex items-center gap-1"><CheckCircle className="h-3 w-3"/> Goal Reached!</span>
+                          ) : weekly !== null || monthly !== null ? (
+                            <div className="flex flex-col">
+                              {weekly !== null && <span title={`Remaining: ${formatCurrency(remainingAmount)}`}>{formatCurrency(weekly)}/wk</span>}
+                              {monthly !== null && <span title={`Remaining: ${formatCurrency(remainingAmount)}`}>{formatCurrency(monthly)}/mo</span>}
+                            </div>
+                          ) : saving.goal_amount && saving.target_date ? (
+                             <span className="text-muted-foreground">No target date or past due</span>
+                          ) : (
+                             <span className="text-muted-foreground">N/A</span>
+                          )}
+                        </TableCell>
                         <TableCell>{saving.target_date ? formatDate(saving.target_date) : <span className="text-muted-foreground text-xs">None</span>}</TableCell>
                         <TableCell>
                           <div className="flex space-x-1">
