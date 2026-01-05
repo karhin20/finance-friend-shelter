@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo, Dispatch, SetStateAction } from 'react';
+import { createContext, useContext, useState, useMemo, useEffect, Dispatch, SetStateAction, useRef, ReactNode } from 'react';
 import { supabase, Income, Expense, Category } from '@/lib/supabase'; // Assuming types are here
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -11,10 +11,7 @@ import {
     UseQueryResult,
     UseMutationResult
 } from '@tanstack/react-query';
-import { DateRange } from 'react-day-picker'; // Assuming you use react-day-picker for date range
-import { subYears, startOfMonth, endOfMonth } from 'date-fns'; // For default date range
-import { format } from 'date-fns';
-import { parseISO } from 'date-fns';
+import { startOfMonth, endOfMonth, format } from 'date-fns'; // For default date range
 
 // --- Types ---
 
@@ -44,10 +41,10 @@ interface FinanceContextType {
     user: any;
     filters: FinanceFilters;
     setFilters: Dispatch<SetStateAction<FinanceFilters>>;
-    incomeQuery: UseQueryResult<Income[]>;
-    expensesQuery: UseQueryResult<Expense[]>;
-    categoriesQuery: any;
-    recurringTransactionsQuery: any;
+    incomeQuery: UseQueryResult<Income[], Error>;
+    expensesQuery: UseQueryResult<Expense[], Error>;
+    categoriesQuery: UseQueryResult<Category[], Error>;
+    recurringTransactionsQuery: UseQueryResult<RecurringTransaction[], Error>;
     addIncomeMutation: any;
     updateIncomeMutation: any;
     deleteIncomeMutation: any;
@@ -55,6 +52,7 @@ interface FinanceContextType {
     updateExpenseMutation: any;
     deleteExpenseMutation: any;
     addCategoryMutation: any;
+    addDefaultCategoriesMutation: any;
     updateCategoryMutation: any;
     deleteCategoryMutation: any;
     createRecurringTransactionMutation: any;
@@ -90,8 +88,8 @@ const fetchIncomeData = async (userId: string, filters?: FinanceFilters): Promis
         toDate.setHours(23, 59, 59, 999);
         query = query.lte('date', toDate.toISOString());
     } else if (filters?.dateRange?.from && !filters?.dateRange?.to) {
-         // If only 'from' is set, maybe fetch up to today? Or handle as needed.
-         // For now, we fetch >= from date
+        // If only 'from' is set, maybe fetch up to today? Or handle as needed.
+        // For now, we fetch >= from date
     }
 
     query = query.order('date', { ascending: false });
@@ -158,7 +156,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
     const { user } = useAuth();
     const { toast } = useToast();
     const queryClient = useQueryClient(); // Get query client instance
-   
+
     // State for filters
     const [filters, setFilters] = useState<FinanceFilters>({
         dateRange: { from: startOfMonth(new Date()), to: endOfMonth(new Date()) },
@@ -169,7 +167,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
         queryKey: ['income', filters.dateRange.from?.toISOString(), filters.dateRange.to?.toISOString()],
         queryFn: async () => {
             if (!user || !filters.dateRange.from || !filters.dateRange.to) return [];
-            console.log(`Fetching income from ${filters.dateRange.from.toISOString()} to ${filters.dateRange.to.toISOString()}`); // Debug log
+            console.log(`Fetching income from ${filters.dateRange.from.toISOString()} to ${filters.dateRange.to.toISOString()} `); // Debug log
             const { data, error } = await supabase
                 .from('income')
                 .select('*')
@@ -184,15 +182,15 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
             return (data as Income[]) || [];
         },
         enabled: !!user && !!filters.dateRange.from && !!filters.dateRange.to, // Only run if user and dates are set
-        // Keep previous data while refetching for smoother UX when changing dates
-        keepPreviousData: true,
+        placeholderData: (previousData) => previousData,
+        staleTime: 1000 * 60 * 5, // 5 minutes cache
     });
 
     const expensesQuery = useQuery<Expense[]>({
         queryKey: ['expenses', filters.dateRange.from?.toISOString(), filters.dateRange.to?.toISOString()],
         queryFn: async () => {
             if (!user || !filters.dateRange.from || !filters.dateRange.to) return [];
-            console.log(`Fetching expenses from ${filters.dateRange.from.toISOString()} to ${filters.dateRange.to.toISOString()}`); // Debug log
+            console.log(`Fetching expenses from ${filters.dateRange.from.toISOString()} to ${filters.dateRange.to.toISOString()} `); // Debug log
             const { data, error } = await supabase
                 .from('expenses')
                 .select('*')
@@ -207,16 +205,19 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
             return (data as Expense[]) || [];
         },
         enabled: !!user && !!filters.dateRange.from && !!filters.dateRange.to, // Only run if user and dates are set
-        // Keep previous data while refetching
-        keepPreviousData: true,
+        placeholderData: (previousData) => previousData,
+        staleTime: 1000 * 60 * 5, // 5 minutes cache
     });
+
+    // --- Automatic Category Setup ---
+    const hasTriggeredDefaultCategories = useRef(false);
 
     const categoriesQuery = useQuery<Category[]>({
         queryKey: financeKeys.categories(user?.id),
         queryFn: () => fetchCategoriesData(user!.id),
         enabled: !!user,
         staleTime: 1000 * 60 * 15, // Cache categories longer
-        cacheTime: 1000 * 60 * 60,
+        gcTime: 1000 * 60 * 60,
     });
 
     // --- Query for Recurring Transactions ---
@@ -237,6 +238,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
             return data || [];
         },
         enabled: !!user, // Only run if user is logged in
+        staleTime: 1000 * 60 * 5, // 5 minutes cache
     });
 
     // --- Mutations ---
@@ -298,7 +300,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
     });
 
     // Update Income Mutation
-     const updateIncomeMutation = useMutation<Income, PostgrestError, { id: string; updates: Partial<Omit<Income, 'id' | 'user_id' | 'created_at'>> }>({
+    const updateIncomeMutation = useMutation<Income, PostgrestError, { id: string; updates: Partial<Omit<Income, 'id' | 'user_id' | 'created_at'>> }>({
         mutationFn: async ({ id, updates }) => {
             if (!user) throw new Error("User not authenticated");
             const { data, error } = await supabase
@@ -312,14 +314,14 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
             return data;
         },
         onSuccess: (data, variables) => {
-             toast({ title: "Success", description: "Income updated." });
-             const incomeQueryKey: QueryKey = ['income', filters.dateRange.from?.toISOString(), filters.dateRange.to?.toISOString()];
-             queryClient.setQueryData<Income[]>(incomeQueryKey, (oldData) =>
+            toast({ title: "Success", description: "Income updated." });
+            const incomeQueryKey: QueryKey = ['income', filters.dateRange.from?.toISOString(), filters.dateRange.to?.toISOString()];
+            queryClient.setQueryData<Income[]>(incomeQueryKey, (oldData) =>
                 oldData ? oldData.map(item =>
                     item.id === data.id ? { ...item, ...data } : item
                 ) : oldData
-             );
-             queryClient.invalidateQueries({ queryKey: incomeQueryKey });
+            );
+            queryClient.invalidateQueries({ queryKey: incomeQueryKey });
         },
         onError: (error) => onMutationError(error, "Failed to update income.", null, financeKeys.income(user?.id, filters)),
     });
@@ -327,8 +329,8 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
     // Delete Income Mutation
     const deleteIncomeMutation = useMutation<boolean, PostgrestError, string>({
         mutationFn: async (id) => {
-             if (!user) throw new Error("User not authenticated");
-             const { error } = await supabase
+            if (!user) throw new Error("User not authenticated");
+            const { error } = await supabase
                 .from('income')
                 .delete()
                 .eq('id', id)
@@ -351,7 +353,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
     const addExpenseMutation = useMutation<Expense, PostgrestError, Omit<Expense, 'id' | 'user_id' | 'created_at'>>({
         mutationFn: async (newExpenseData) => {
             if (!user) throw new Error("User not authenticated");
-             // Handle 'month' column logic if necessary here
+            // Handle 'month' column logic if necessary here
             const { data, error } = await supabase
                 .from('expenses')
                 .insert([{ ...newExpenseData, user_id: user.id }])
@@ -360,11 +362,11 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
             if (error) throw error;
             return data;
         },
-         onSuccess: () => {
+        onSuccess: (data) => {
             toast({ title: "Success", description: "Expense added." });
             const expenseQueryKey: QueryKey = ['expenses', filters.dateRange.from?.toISOString(), filters.dateRange.to?.toISOString()];
             queryClient.setQueryData<Expense[]>(expenseQueryKey, (oldData) =>
-                oldData ? [...oldData, data] : [data]
+                oldData ? [data, ...oldData] : [data]
             );
             queryClient.invalidateQueries({ queryKey: expenseQueryKey });
         },
@@ -372,10 +374,10 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
     });
 
     // Update Expense Mutation
-     const updateExpenseMutation = useMutation<Expense, PostgrestError, { id: string; updates: Partial<Omit<Expense, 'id' | 'user_id' | 'created_at'>> }>({
+    const updateExpenseMutation = useMutation<Expense, PostgrestError, { id: string; updates: Partial<Omit<Expense, 'id' | 'user_id' | 'created_at'>> }>({
         mutationFn: async ({ id, updates }) => {
             if (!user) throw new Error("User not authenticated");
-             // Handle 'month' column logic if necessary here
+            // Handle 'month' column logic if necessary here
             const { data, error } = await supabase
                 .from('expenses')
                 .update(updates)
@@ -386,12 +388,12 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
             if (error) throw error;
             return data;
         },
-         onSuccess: () => {
+        onSuccess: (data) => {
             toast({ title: "Success", description: "Expense updated." });
             const expenseQueryKey: QueryKey = ['expenses', filters.dateRange.from?.toISOString(), filters.dateRange.to?.toISOString()];
             queryClient.setQueryData<Expense[]>(expenseQueryKey, (oldData) =>
                 oldData ? oldData.map(item =>
-                    item.id === data.id ? { ...item, ...data } : item
+                    item.id === data.id ? data : item
                 ) : oldData
             );
             queryClient.invalidateQueries({ queryKey: expenseQueryKey });
@@ -439,7 +441,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
                 .select()
                 .single();
             if (error) {
-                 if (error.code === '23505') { throw new Error(`Category "${trimmedName}" already exists for this type.`); }
+                if (error.code === '23505') { throw new Error(`Category "${trimmedName}" already exists for this type.`); }
                 throw error;
             }
             return data;
@@ -457,7 +459,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
             queryClient.setQueryData<Category[]>(queryKey, (old) => {
                 const optimisticCategory: Category = {
                     // Create a temporary ID - won't be saved, just for the UI
-                    id: `temp-${Date.now()}`,
+                    id: `temp - ${Date.now()} `,
                     user_id: user!.id,
                     created_at: new Date().toISOString(),
                     ...newCategory,
@@ -471,13 +473,67 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
         },
         // If the mutation fails, use the context returned from onMutate to roll back
         onError: (err, newCategory, context) => {
-             onMutationError(err, "Failed to add category.", context, financeKeys.categories(user?.id));
+            onMutationError(err, "Failed to add category.", context, financeKeys.categories(user?.id));
         },
         // Always refetch after error or success:
         onSettled: () => {
             queryClient.invalidateQueries({ queryKey: financeKeys.categories(user?.id) });
         },
     });
+
+    // Mutation to add default categories
+    const addDefaultCategoriesMutation = useMutation<Category[], PostgrestError, void>({
+        mutationFn: async () => {
+            if (!user) throw new Error("User not authenticated");
+
+            const defaultCategories = [
+                // Expenses
+                { name: 'Housing', type: 'expense' as const, user_id: user.id },
+                { name: 'Food & Dining', type: 'expense' as const, user_id: user.id },
+                { name: 'Bills & Utilities', type: 'expense' as const, user_id: user.id },
+                { name: 'Auto & Transport', type: 'expense' as const, user_id: user.id },
+                { name: 'Health & Fitness', type: 'expense' as const, user_id: user.id },
+                { name: 'Personal Care', type: 'expense' as const, user_id: user.id },
+                { name: 'Entertainment', type: 'expense' as const, user_id: user.id },
+                { name: 'Shopping', type: 'expense' as const, user_id: user.id },
+                // Income
+                { name: 'Salary', type: 'income' as const, user_id: user.id },
+                { name: 'Freelance', type: 'income' as const, user_id: user.id },
+                { name: 'Gifts', type: 'income' as const, user_id: user.id },
+                { name: 'Interest', type: 'income' as const, user_id: user.id },
+                { name: 'Investment', type: 'income' as const, user_id: user.id },
+            ];
+
+            const { data, error } = await supabase
+                .from('categories')
+                .insert(defaultCategories)
+                .select();
+
+            if (error) throw error;
+            return data as Category[];
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: financeKeys.categories(user?.id) });
+            toast({ title: "Categories Created", description: "Default categories have been added successfully." });
+        },
+        onError: (error) => {
+            toast({ title: "Setup Failed", description: error instanceof Error ? error.message : "Failed to add default categories", variant: "destructive" });
+        }
+    });
+
+    useEffect(() => {
+        if (
+            user &&
+            categoriesQuery.status === 'success' &&
+            categoriesQuery.data.length === 0 &&
+            !hasTriggeredDefaultCategories.current &&
+            !addDefaultCategoriesMutation.isPending
+        ) {
+            console.log("FinanceContext: No categories found, triggering automatic setup...");
+            hasTriggeredDefaultCategories.current = true;
+            addDefaultCategoriesMutation.mutate();
+        }
+    }, [user, categoriesQuery.status, categoriesQuery.data, addDefaultCategoriesMutation]);
 
     // Delete Category Mutation with Optimistic Update
     const deleteCategoryMutation = useMutation<boolean, PostgrestError, string>({
@@ -500,7 +556,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
             return { previousData };
         },
         onError: (err, idToDelete, context) => {
-             onMutationError(err, "Failed to delete category.", context, financeKeys.categories(user?.id));
+            onMutationError(err, "Failed to delete category.", context, financeKeys.categories(user?.id));
         },
         onSettled: () => {
             queryClient.invalidateQueries({ queryKey: financeKeys.categories(user?.id) });
@@ -527,7 +583,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
                 .select()
                 .single();
             if (error) {
-                 if (error.code === '23505') { throw new Error(`Category "${trimmedName}" already exists for this type.`); }
+                if (error.code === '23505') { throw new Error(`Category "${trimmedName}" already exists for this type.`); }
                 throw error;
             }
             return data;
@@ -539,12 +595,12 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
             const previousData = queryClient.getQueryData<Category[]>(queryKey);
             queryClient.setQueryData<Category[]>(queryKey, (old) =>
                 old?.map(cat => cat.id === id ? { ...cat, ...updates } : cat)
-                   ?.sort((a,b) => a.name.localeCompare(b.name)) ?? [] // Re-sort after update
+                    ?.sort((a, b) => a.name.localeCompare(b.name)) ?? [] // Re-sort after update
             );
             return { previousData };
         },
         onError: (err, variables, context) => {
-             onMutationError(err, "Failed to update category.", context, financeKeys.categories(user?.id));
+            onMutationError(err, "Failed to update category.", context, financeKeys.categories(user?.id));
         },
         onSettled: () => {
             queryClient.invalidateQueries({ queryKey: financeKeys.categories(user?.id) });
@@ -584,7 +640,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
         },
         onMutate: async (variables) => {
             // Optimistic update logic
-            await queryClient.cancelQueries(['recurringTransactions', user?.id]);
+            await queryClient.cancelQueries({ queryKey: ['recurringTransactions', user?.id] });
             const previousData = queryClient.getQueryData<RecurringTransaction[]>(['recurringTransactions', user?.id]);
             if (previousData) {
                 queryClient.setQueryData<RecurringTransaction[]>(
@@ -596,7 +652,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
             }
             return { previousData }; // Return context for rollback
         },
-        onError: (error, variables, context) => {
+        onError: (error, variables, context: any) => {
             // Rollback on error
             if (context?.previousData) {
                 queryClient.setQueryData(['recurringTransactions', user?.id], context.previousData);
@@ -606,7 +662,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
         },
         onSettled: () => {
             // Invalidate to refetch from server
-            queryClient.invalidateQueries(['recurringTransactions', user?.id]);
+            queryClient.invalidateQueries({ queryKey: ['recurringTransactions', user?.id] });
         },
     });
 
@@ -633,7 +689,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
         },
         onMutate: async (idToDelete) => {
             // Optimistic update logic
-            await queryClient.cancelQueries(['recurringTransactions', user?.id]);
+            await queryClient.cancelQueries({ queryKey: ['recurringTransactions', user?.id] });
             const previousData = queryClient.getQueryData<RecurringTransaction[]>(['recurringTransactions', user?.id]);
             if (previousData) {
                 queryClient.setQueryData<RecurringTransaction[]>(
@@ -643,7 +699,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
             }
             return { previousData }; // Return context for rollback
         },
-        onError: (error, variables, context) => {
+        onError: (error, variables, context: any) => {
             // Rollback on error
             if (context?.previousData) {
                 queryClient.setQueryData(['recurringTransactions', user?.id], context.previousData);
@@ -653,7 +709,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
         },
         onSettled: () => {
             // Invalidate to refetch from server
-            queryClient.invalidateQueries(['recurringTransactions', user?.id]);
+            queryClient.invalidateQueries({ queryKey: ['recurringTransactions', user?.id] });
         },
     });
 
@@ -672,6 +728,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
         updateExpenseMutation,
         deleteExpenseMutation,
         addCategoryMutation,
+        addDefaultCategoriesMutation,
         deleteCategoryMutation,
         updateCategoryMutation,
         createRecurringTransactionMutation: updateRecurringTransactionMutation,
@@ -692,6 +749,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
         updateExpenseMutation,
         deleteExpenseMutation,
         addCategoryMutation,
+        addDefaultCategoriesMutation,
         deleteCategoryMutation,
         updateCategoryMutation,
         updateRecurringTransactionMutation,

@@ -1,11 +1,11 @@
 {
-  "name": "Finance Friend Shelter",
-  "short_name": "Kofi's Finance",
+  "name": "Diligence Finance",
+  "short_name": "Diligence",
   "description": "Track and manage your finances effectively",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#b7b9b8",
-  "theme_color": "#4f46e5",
+  "background_color": "#2563EB",
+  "theme_color": "#2563EB",
   "orientation": "portrait-primary",
   "icons": [
     {
@@ -21,4 +21,4 @@
       "purpose": "any maskable"
     }
   ]
-} 
+}

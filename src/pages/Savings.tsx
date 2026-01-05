@@ -12,7 +12,10 @@ import { CalendarIcon, Plus, PiggyBank, ArrowUpDown, Trash2, Pencil, CheckCircle
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase, formatCurrency, formatDate } from '@/lib/supabase'; // Assuming these helpers exist
+import { supabase, formatDate } from '@/lib/supabase'; // Assuming these helpers exist
+import { useCurrency } from '@/contexts/CurrencyContext';
+import { useFinance } from '@/contexts/FinanceContext';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -42,6 +45,7 @@ type SavingFormData = {
   date: Date;
   targetDate?: Date;
   description: string;
+  deductFromBalance: boolean;
 };
 
 // --- Helper Function for Projections ---
@@ -56,8 +60,8 @@ const calculateProjections = (saving: Saving): { weekly: number | null; monthly:
     return { weekly: null, monthly: null, remainingAmount };
   }
 
-  const weeksRemaining = differenceInWeeks(targetDate, now, { roundingMethod: 'ceil' });
-  const monthsRemaining = differenceInMonths(targetDate, now, { roundingMethod: 'ceil' });
+  const weeksRemaining = differenceInWeeks(targetDate, now);
+  const monthsRemaining = differenceInMonths(targetDate, now);
 
   const weekly = weeksRemaining > 0 ? remainingAmount / weeksRemaining : null;
   const monthly = monthsRemaining > 0 ? remainingAmount / monthsRemaining : null;
@@ -69,6 +73,8 @@ const calculateProjections = (saving: Saving): { weekly: number | null; monthly:
 const SavingsPage = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { formatCurrency } = useCurrency();
+  const { addExpenseMutation } = useFinance();
   const [savings, setSavings] = useState<Saving[]>(() => {
     const cachedSavings = localStorage.getItem('savings');
     return cachedSavings ? JSON.parse(cachedSavings) : [];
@@ -93,6 +99,7 @@ const SavingsPage = () => {
 
   // State for Add Funds Dialog specific input
   const [additionalAmount, setAdditionalAmount] = useState<string>('');
+  const [deductFromBalanceFunds, setDeductFromBalanceFunds] = useState<boolean>(false);
 
   // Sorting State
   const [sortConfig, setSortConfig] = useState<{ key: SortableKeys; direction: 'asc' | 'desc' }>({
@@ -225,6 +232,17 @@ const SavingsPage = () => {
       if (!data) throw new Error("Saving not created.");
 
       setSavings([data, ...savings]); // Add to the top
+
+      // Handle Deduction (Expense Creation)
+      if (formData.deductFromBalance && amountNum > 0) {
+        addExpenseMutation.mutate({
+          amount: amountNum,
+          description: `Transfer to Savings: ${data.title}`,
+          date: new Date().toISOString(), // Use current date for the transaction
+          category: 'Savings', // Ensure 'Savings' category exists or is handled
+        });
+      }
+
       toast({ title: 'Saving Goal Added', description: `Successfully added "${data.title}".` });
       setAddDialogOpen(false); // Close dialog on success
 
@@ -252,7 +270,7 @@ const SavingsPage = () => {
     if (isNaN(amountNum) || amountNum < 0) {
       toast({ title: 'Invalid Amount', description: 'Please enter a valid number (0 or greater).', variant: 'destructive' }); return;
     }
-     if (formData.goalAmount && (isNaN(goalAmountNum!) || goalAmountNum! <= 0)) {
+    if (formData.goalAmount && (isNaN(goalAmountNum!) || goalAmountNum! <= 0)) {
       toast({ title: 'Invalid Goal Amount', description: 'Goal amount must be a positive number.', variant: 'destructive' }); return;
     }
     if (!formData.title.trim()) {
@@ -330,6 +348,7 @@ const SavingsPage = () => {
   const openAddFundsDialog = (saving: Saving) => {
     setSavingToAddFunds(saving);
     setAdditionalAmount(''); // Reset input
+    setDeductFromBalanceFunds(false); // Reset checkbox
     setAddFundsDialogOpen(true);
   };
 
@@ -356,6 +375,17 @@ const SavingsPage = () => {
       if (!data) throw new Error("Failed to update funds.");
 
       setSavings(savings.map(s => s.id === savingToAddFunds.id ? data : s));
+
+      // Handle Deduction Logic for Funds
+      if (deductFromBalanceFunds) {
+        addExpenseMutation.mutate({
+          amount: amountToAdd,
+          description: `Transfer to Savings: ${savingToAddFunds.title}`,
+          date: new Date().toISOString(),
+          category: 'Savings',
+        });
+      }
+
       toast({ title: 'Funds Added', description: `Added ${formatCurrency(amountToAdd)} to "${savingToAddFunds.title}".` });
       setAddFundsDialogOpen(false);
       setSavingToAddFunds(null);
@@ -371,29 +401,34 @@ const SavingsPage = () => {
   // --- Render ---
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        {/* Header & Add Button */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Savings Goals</h1>
-            <p className="text-muted-foreground">Track and manage your savings goals.</p>
+      <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        {/* Add Button & Quick Summary */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+          <div className="bg-muted/30 p-2 rounded-2xl border border-border/40 flex items-center gap-4">
+            <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+              <PiggyBank className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest leading-none mb-1">Total Saved</p>
+              <p className="text-2xl font-black tracking-tight leading-none">{loading ? '...' : formatCurrency(totalSavings)}</p>
+            </div>
           </div>
-           {/* Add Saving Dialog Trigger & Container */}
-           <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Saving Goal
-                </Button>
-              </DialogTrigger>
-              {/* SavingFormDialog is rendered inside when open */}
-              <SavingFormDialog
-                mode="add"
-                onOpenChange={setAddDialogOpen} // Allows closing from within
-                onSubmit={handleAddSaving}
-                isSubmitting={isSubmitting}
-              />
-            </Dialog>
+          {/* Add Saving Dialog Trigger & Container */}
+          <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Saving Goal
+              </Button>
+            </DialogTrigger>
+            {/* SavingFormDialog is rendered inside when open */}
+            <SavingFormDialog
+              mode="add"
+              onOpenChange={setAddDialogOpen} // Allows closing from within
+              onSubmit={handleAddSaving}
+              isSubmitting={isSubmitting}
+            />
+          </Dialog>
         </div>
 
         {/* Summary Cards */}
@@ -418,7 +453,7 @@ const SavingsPage = () => {
             <CardContent className="max-h-48 overflow-y-auto space-y-3 pr-2"> {/* Limit height and add scroll */}
               {loading ? (
                 <div className="space-y-3">
-                   {[...Array(2)].map((_, i) => ( <div key={i} className="animate-pulse"><div className="h-4 bg-muted rounded w-3/4 mb-1"></div><div className="h-2 bg-muted rounded w-full"></div></div> ))}
+                  {[...Array(2)].map((_, i) => (<div key={i} className="animate-pulse"><div className="h-4 bg-muted rounded w-3/4 mb-1"></div><div className="h-2 bg-muted rounded w-full"></div></div>))}
                 </div>
               ) : savings.some(s => s.goal_amount && s.goal_amount > 0) ? (
                 savings
@@ -450,10 +485,10 @@ const SavingsPage = () => {
           <CardContent>
             {loading ? (
               // Simple Table Skeleton Loader
-               <div className="space-y-2">
-                 <div className="h-10 bg-muted rounded w-full"></div> {/* Header */}
-                 {[...Array(3)].map((_, i) => (<div key={i} className="h-12 bg-muted/50 rounded w-full"></div>))}
-               </div>
+              <div className="space-y-2">
+                <div className="h-10 bg-muted rounded w-full"></div> {/* Header */}
+                {[...Array(3)].map((_, i) => (<div key={i} className="h-12 bg-muted/50 rounded w-full"></div>))}
+              </div>
             ) : savings.length > 0 ? (
               <div className="rounded-md border">
                 <Table>
@@ -475,56 +510,57 @@ const SavingsPage = () => {
                       const { weekly, monthly, remainingAmount } = calculateProjections(saving); // Calculate projections
 
                       return (
-                      <TableRow key={saving.id} className={cn(isCompleted && "bg-green-50 dark:bg-green-900/20")}>
-                        <TableCell className="font-medium max-w-[150px] truncate" title={saving.title}>{saving.title}</TableCell>
-                        <TableCell>{formatCurrency(saving.amount)}</TableCell>
-                        <TableCell>{saving.goal_amount ? formatCurrency(saving.goal_amount) : <span className="text-muted-foreground text-xs">N/A</span>}</TableCell>
-                        <TableCell>
-                          {saving.goal_amount ? (
-                            <div className="flex items-center gap-2 min-w-[120px]"> {/* Ensure minimum width */}
-                              <Progress value={progress} className="h-2 flex-grow" />
-                               <span className="text-xs font-medium w-10 text-right">
-                                {progress.toFixed(0)}%
-                               </span>
-                               {isCompleted && <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />}
+                        <TableRow key={saving.id} className={cn(isCompleted && "bg-green-50 dark:bg-green-900/20")}>
+                          <TableCell className="font-medium max-w-[150px] truncate" title={saving.title}>{saving.title}</TableCell>
+                          <TableCell>{formatCurrency(saving.amount)}</TableCell>
+                          <TableCell>{saving.goal_amount ? formatCurrency(saving.goal_amount) : <span className="text-muted-foreground text-xs">N/A</span>}</TableCell>
+                          <TableCell>
+                            {saving.goal_amount ? (
+                              <div className="flex items-center gap-2 min-w-[120px]"> {/* Ensure minimum width */}
+                                <Progress value={progress} className="h-2 flex-grow" />
+                                <span className="text-xs font-medium w-10 text-right">
+                                  {progress.toFixed(0)}%
+                                </span>
+                                {isCompleted && <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">No goal set</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {isCompleted ? (
+                              <span className="text-green-600 flex items-center gap-1"><CheckCircle className="h-3 w-3" /> Goal Reached!</span>
+                            ) : weekly !== null || monthly !== null ? (
+                              <div className="flex flex-col">
+                                {weekly !== null && <span title={`Remaining: ${formatCurrency(remainingAmount)}`}>{formatCurrency(weekly)}/wk</span>}
+                                {monthly !== null && <span title={`Remaining: ${formatCurrency(remainingAmount)}`}>{formatCurrency(monthly)}/mo</span>}
+                              </div>
+                            ) : saving.goal_amount && saving.target_date ? (
+                              <span className="text-muted-foreground">No target date or past due</span>
+                            ) : (
+                              <span className="text-muted-foreground">N/A</span>
+                            )}
+                          </TableCell>
+                          <TableCell>{saving.target_date ? formatDate(saving.target_date) : <span className="text-muted-foreground text-xs">None</span>}</TableCell>
+                          <TableCell>
+                            <div className="flex space-x-1">
+                              {/* Add Funds */}
+                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Add Funds" onClick={() => openAddFundsDialog(saving)}>
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                              {/* Edit */}
+                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Edit" onClick={() => openEditDialog(saving)}>
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              {/* Delete */}
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Delete" onClick={() => confirmDelete(saving)}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </div>
-                          ) : (
-                             <span className="text-muted-foreground text-xs">No goal set</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          {isCompleted ? (
-                            <span className="text-green-600 flex items-center gap-1"><CheckCircle className="h-3 w-3"/> Goal Reached!</span>
-                          ) : weekly !== null || monthly !== null ? (
-                            <div className="flex flex-col">
-                              {weekly !== null && <span title={`Remaining: ${formatCurrency(remainingAmount)}`}>{formatCurrency(weekly)}/wk</span>}
-                              {monthly !== null && <span title={`Remaining: ${formatCurrency(remainingAmount)}`}>{formatCurrency(monthly)}/mo</span>}
-                            </div>
-                          ) : saving.goal_amount && saving.target_date ? (
-                             <span className="text-muted-foreground">No target date or past due</span>
-                          ) : (
-                             <span className="text-muted-foreground">N/A</span>
-                          )}
-                        </TableCell>
-                        <TableCell>{saving.target_date ? formatDate(saving.target_date) : <span className="text-muted-foreground text-xs">None</span>}</TableCell>
-                        <TableCell>
-                          <div className="flex space-x-1">
-                            {/* Add Funds */}
-                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Add Funds" onClick={() => openAddFundsDialog(saving)}>
-                               <Plus className="h-4 w-4" />
-                            </Button>
-                            {/* Edit */}
-                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Edit" onClick={() => openEditDialog(saving)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            {/* Delete */}
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Delete" onClick={() => confirmDelete(saving)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )})}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>
@@ -536,27 +572,27 @@ const SavingsPage = () => {
                 <p className="text-muted-foreground mb-6">
                   Start tracking your progress towards your financial goals.
                 </p>
-                 {/* Also include the Add Dialog Trigger here for convenience */}
-                 <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-                    <DialogTrigger asChild>
-                        <Button>
-                            <Plus className="mr-2 h-4 w-4" />
-                            Add Your First Goal
-                        </Button>
-                    </DialogTrigger>
-                     <SavingFormDialog
-                        mode="add"
-                        onOpenChange={setAddDialogOpen}
-                        onSubmit={handleAddSaving}
-                        isSubmitting={isSubmitting}
-                     />
+                {/* Also include the Add Dialog Trigger here for convenience */}
+                <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Your First Goal
+                    </Button>
+                  </DialogTrigger>
+                  <SavingFormDialog
+                    mode="add"
+                    onOpenChange={setAddDialogOpen}
+                    onSubmit={handleAddSaving}
+                    isSubmitting={isSubmitting}
+                  />
                 </Dialog>
               </div>
             )}
           </CardContent>
         </Card>
 
-         {/* --- Dialog Containers (The content is rendered inside these when open) --- */}
+        {/* --- Dialog Containers (The content is rendered inside these when open) --- */}
 
         {/* Edit Saving Dialog Container */}
         <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
@@ -584,9 +620,9 @@ const SavingsPage = () => {
               </DialogDescription>
             </DialogHeader>
             <Alert variant="destructive">
-                <AlertDescription>
-                    This action cannot be undone and will permanently remove the record.
-                </AlertDescription>
+              <AlertDescription>
+                This action cannot be undone and will permanently remove the record.
+              </AlertDescription>
             </Alert>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={isDeleting}>Cancel</Button>
@@ -608,24 +644,24 @@ const SavingsPage = () => {
             {savingToAddFunds && (
               <div className="space-y-4 py-2">
                 <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Current Amount</Label>
+                    <div className="text-lg font-semibold">{formatCurrency(savingToAddFunds.amount)}</div>
+                  </div>
+                  {savingToAddFunds.goal_amount && (
                     <div>
-                        <Label className="text-xs text-muted-foreground">Current Amount</Label>
-                        <div className="text-lg font-semibold">{formatCurrency(savingToAddFunds.amount)}</div>
+                      <Label className="text-xs text-muted-foreground">Goal Amount</Label>
+                      <div className="text-lg font-semibold">{formatCurrency(savingToAddFunds.goal_amount)}</div>
                     </div>
-                     {savingToAddFunds.goal_amount && (
-                         <div>
-                            <Label className="text-xs text-muted-foreground">Goal Amount</Label>
-                            <div className="text-lg font-semibold">{formatCurrency(savingToAddFunds.goal_amount)}</div>
-                         </div>
-                     )}
+                  )}
                 </div>
-                 {savingToAddFunds.goal_amount && (
+                {savingToAddFunds.goal_amount && (
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground">Progress</Label>
                     <Progress value={getProgress(savingToAddFunds)} className="h-2" />
                     <div className="text-sm text-muted-foreground">
                       {getProgress(savingToAddFunds).toFixed(1)}% funded
-                       {savingToAddFunds.target_date && ` (Target: ${formatDate(savingToAddFunds.target_date)})`}
+                      {savingToAddFunds.target_date && ` (Target: ${formatDate(savingToAddFunds.target_date)})`}
                     </div>
                   </div>
                 )}
@@ -637,6 +673,16 @@ const SavingsPage = () => {
                     onChange={(e) => setAdditionalAmount(e.target.value)}
                     autoFocus // Focus this field when dialog opens
                   />
+                </div>
+                <div className="flex items-center space-x-2 pt-2">
+                  <Checkbox
+                    id="deductFunds"
+                    checked={deductFromBalanceFunds}
+                    onCheckedChange={(checked) => setDeductFromBalanceFunds(checked as boolean)}
+                  />
+                  <Label htmlFor="deductFunds" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Deduct from balance (create expense)
+                  </Label>
                 </div>
               </div>
             )}
@@ -657,151 +703,169 @@ const SavingsPage = () => {
 
 // --- Reusable Saving Form Dialog Component ---
 interface SavingFormDialogProps {
-    mode: 'add' | 'edit';
-    // isOpen prop removed - controlled by parent <Dialog>
-    onOpenChange: (open: boolean) => void; // Needed to close the dialog from within
-    onSubmit: (formData: SavingFormData) => Promise<void>;
-    isSubmitting: boolean;
-    initialData?: Saving | null; // Provide for edit mode
+  mode: 'add' | 'edit';
+  // isOpen prop removed - controlled by parent <Dialog>
+  onOpenChange: (open: boolean) => void; // Needed to close the dialog from within
+  onSubmit: (formData: SavingFormData) => Promise<void>;
+  isSubmitting: boolean;
+  initialData?: Saving | null; // Provide for edit mode
 }
 
 // Updated component signature (removed isOpen prop)
 const SavingFormDialog = ({ mode, onOpenChange, onSubmit, isSubmitting, initialData }: SavingFormDialogProps) => {
-    // Form state specific to this dialog instance
-    const [title, setTitle] = useState('');
-    const [amount, setAmount] = useState(''); // Represents current amount in edit, initial in add
-    const [goalAmount, setGoalAmount] = useState('');
-    const [date, setDate] = useState<Date>(new Date()); // Date started / initial contribution date
-    const [targetDate, setTargetDate] = useState<Date | undefined>(undefined);
-    const [description, setDescription] = useState('');
+  // Form state specific to this dialog instance
+  const [title, setTitle] = useState('');
+  const [amount, setAmount] = useState(''); // Represents current amount in edit, initial in add
+  const [goalAmount, setGoalAmount] = useState('');
+  const [date, setDate] = useState<Date>(new Date()); // Date started / initial contribution date
+  const [targetDate, setTargetDate] = useState<Date | undefined>(undefined);
+  const [description, setDescription] = useState('');
+  const [deductFromBalance, setDeductFromBalance] = useState(false);
 
-    // Pre-fill form for edit mode or reset for add mode
-    useEffect(() => {
-        if (mode === 'edit' && initialData) {
-            setTitle(initialData.title || '');
-            setAmount(String(initialData.amount || 0));
-            setGoalAmount(String(initialData.goal_amount || ''));
-            setDate(initialData.date ? new Date(initialData.date) : new Date());
-            setTargetDate(initialData.target_date ? new Date(initialData.target_date) : undefined);
-            setDescription(initialData.description || '');
-        } else {
-            // Reset for add mode (or if initialData is null in edit mode somehow)
-             setTitle('');
-             setAmount('');
-             setGoalAmount('');
-             setDate(new Date());
-             setTargetDate(undefined);
-             setDescription('');
-        }
-        // Only depend on mode and initialData to trigger reset/prefill
-    }, [mode, initialData]);
+  // Pre-fill form for edit mode or reset for add mode
+  useEffect(() => {
+    if (mode === 'edit' && initialData) {
+      setTitle(initialData.title || '');
+      setAmount(String(initialData.amount || 0));
+      setGoalAmount(String(initialData.goal_amount || ''));
+      setDate(initialData.date ? new Date(initialData.date) : new Date());
+      setTargetDate(initialData.target_date ? new Date(initialData.target_date) : undefined);
+      setDescription(initialData.description || '');
+    } else {
+      // Reset for add mode (or if initialData is null in edit mode somehow)
+      setTitle('');
+      setAmount('');
+      setGoalAmount('');
+      setDate(new Date());
+      setTargetDate(undefined);
+      setDescription('');
+      setDeductFromBalance(false);
+    }
+    // Only depend on mode and initialData to trigger reset/prefill
+  }, [mode, initialData]);
 
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        const formData: SavingFormData = { title, amount, goalAmount, date, targetDate, description };
-        onSubmit(formData);
-        // Form state reset is handled by the useEffect above when initialData changes or mode changes
-    };
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const formData: SavingFormData = { title, amount, goalAmount, date, targetDate, description, deductFromBalance };
+    onSubmit(formData);
+    // Form state reset is handled by the useEffect above when initialData changes or mode changes
+  };
 
-    // DialogContent is the root here, and it receives context from the parent <Dialog>
-    return (
-        <DialogContent className="sm:max-w-[525px]">
-            <DialogHeader>
-                <DialogTitle>{mode === 'add' ? 'Add New Saving Goal' : 'Edit Saving Goal'}</DialogTitle>
-                <DialogDescription>
-                    {mode === 'add' ? 'Define a new goal and record any initial amount saved.' : 'Update the details for this saving goal.'}
-                </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmit}>
-                <div className="grid gap-4 py-4">
-                     {/* Title */}
-                     <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="title" className="text-right">Title</Label>
-                        <Input id="title" placeholder="e.g., Emergency Fund" value={title} onChange={(e) => setTitle(e.target.value)} className="col-span-3" required />
-                    </div>
-                    {/* Amount */}
-                    <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="amount" className="text-right">{mode === 'add' ? 'Initial Amount' : 'Current Amount'}</Label>
-                        <Input id="amount" type="number" step="0.01" min="0" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} className="col-span-3" required />
-                    </div>
-                     {/* Goal Amount */}
-                     <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="goalAmount" className="text-right">Goal Amount</Label>
-                        <Input id="goalAmount" type="number" step="0.01" min="0.01" placeholder="Optional: e.g., 1000.00" value={goalAmount} onChange={(e) => setGoalAmount(e.target.value)} className="col-span-3" />
-                    </div>
-                    {/* Date */}
-                     <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="date-popover" className="text-right">{mode === 'add' ? 'Date Started' : 'Date Started'}</Label>
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <Button id="date-popover" variant="outline" className={cn("col-span-3 justify-start text-left font-normal", !date && "text-muted-foreground")}>
-                                    <CalendarIcon className="mr-2 h-4 w-4" />
-                                    {date ? format(date, "PPP") : <span>Pick a date</span>}
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                                <Calendar mode="single" selected={date} onSelect={(d) => d && setDate(d)} initialFocus />
-                            </PopoverContent>
-                        </Popover>
-                    </div>
-                    {/* Target Date */}
-                    <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="targetDate-popover" className="text-right">Target Date</Label>
-                         <Popover>
-                            <PopoverTrigger asChild>
-                                <Button id="targetDate-popover" variant="outline" className={cn("col-span-3 justify-start text-left font-normal", !targetDate && "text-muted-foreground")}>
-                                    <CalendarIcon className="mr-2 h-4 w-4" />
-                                    {targetDate ? format(targetDate, "PPP") : <span>Optional: Pick a target</span>}
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                                <Calendar mode="single" selected={targetDate} onSelect={setTargetDate} fromDate={new Date()} initialFocus />
-                            </PopoverContent>
-                        </Popover>
-                    </div>
-                    {/* Description */}
-                     <div className="grid grid-cols-4 items-start gap-4">
-                        <Label htmlFor="description" className="text-right pt-2">Notes</Label>
-                        <Textarea id="description" placeholder="Optional: e.g., For down payment..." value={description} onChange={(e) => setDescription(e.target.value)} className="col-span-3" />
-                    </div>
-                </div>
-                 <DialogFooter>
-                    <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>Cancel</Button>
-                    <Button type="submit" disabled={isSubmitting}>
-                         {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                         {isSubmitting ? (mode === 'add' ? 'Adding...' : 'Saving...') : (mode === 'add' ? 'Add Goal' : 'Save Changes')}
-                    </Button>
-                </DialogFooter>
-            </form>
-        </DialogContent>
-    );
+  // DialogContent is the root here, and it receives context from the parent <Dialog>
+  return (
+    <DialogContent className="sm:max-w-[525px]">
+      <DialogHeader>
+        <DialogTitle>{mode === 'add' ? 'Add New Saving Goal' : 'Edit Saving Goal'}</DialogTitle>
+        <DialogDescription>
+          {mode === 'add' ? 'Define a new goal and record any initial amount saved.' : 'Update the details for this saving goal.'}
+        </DialogDescription>
+      </DialogHeader>
+      <form onSubmit={handleSubmit}>
+        <div className="grid gap-4 py-4">
+          {/* Title */}
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="title" className="text-right">Title</Label>
+            <Input id="title" placeholder="e.g., Emergency Fund" value={title} onChange={(e) => setTitle(e.target.value)} className="col-span-3" required />
+          </div>
+          {/* Amount */}
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="amount" className="text-right">{mode === 'add' ? 'Initial Amount' : 'Current Amount'}</Label>
+            <Input id="amount" type="number" step="0.01" min="0" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} className="col-span-3" required />
+          </div>
+          {/* Goal Amount */}
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="goalAmount" className="text-right">Goal Amount</Label>
+            <Input id="goalAmount" type="number" step="0.01" min="0.01" placeholder="Optional: e.g., 1000.00" value={goalAmount} onChange={(e) => setGoalAmount(e.target.value)} className="col-span-3" />
+          </div>
+          {/* Date */}
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="date-popover" className="text-right">{mode === 'add' ? 'Date Started' : 'Date Started'}</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button id="date-popover" variant="outline" className={cn("col-span-3 justify-start text-left font-normal", !date && "text-muted-foreground")}>
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {date ? format(date, "PPP") : <span>Pick a date</span>}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar mode="single" selected={date} onSelect={(d) => d && setDate(d)} initialFocus />
+              </PopoverContent>
+            </Popover>
+          </div>
+          {/* Target Date */}
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="targetDate-popover" className="text-right">Target Date</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button id="targetDate-popover" variant="outline" className={cn("col-span-3 justify-start text-left font-normal", !targetDate && "text-muted-foreground")}>
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {targetDate ? format(targetDate, "PPP") : <span>Optional: Pick a target</span>}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar mode="single" selected={targetDate} onSelect={setTargetDate} fromDate={new Date()} initialFocus />
+              </PopoverContent>
+            </Popover>
+          </div>
+          {/* Description */}
+          <div className="grid grid-cols-4 items-start gap-4">
+            <Label htmlFor="description" className="text-right pt-2">Notes</Label>
+            <Textarea id="description" placeholder="Optional: e.g., For down payment..." value={description} onChange={(e) => setDescription(e.target.value)} className="col-span-3" />
+          </div>
+
+          {/* Deduct Checkbox (Only for Add Mode) */}
+          {mode === 'add' && (
+            <div className="grid grid-cols-4 items-center gap-4">
+              <div className="col-start-2 col-span-3 flex items-center space-x-2">
+                <Checkbox
+                  id="deductNew"
+                  checked={deductFromBalance}
+                  onCheckedChange={(checked) => setDeductFromBalance(checked as boolean)}
+                />
+                <Label htmlFor="deductNew" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                  Deduct initial amount from balance
+                </Label>
+              </div>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>Cancel</Button>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            {isSubmitting ? (mode === 'add' ? 'Adding...' : 'Saving...') : (mode === 'add' ? 'Add Goal' : 'Save Changes')}
+          </Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  );
 };
 
 // --- Reusable Sortable Table Head ---
 interface SortableTableHeadProps {
-    sortKey: SortableKeys;
-    currentSort: { key: SortableKeys; direction: 'asc' | 'desc' };
-    requestSort: (key: SortableKeys) => void;
-    children: React.ReactNode;
-    className?: string;
+  sortKey: SortableKeys;
+  currentSort: { key: SortableKeys; direction: 'asc' | 'desc' };
+  requestSort: (key: SortableKeys) => void;
+  children: React.ReactNode;
+  className?: string;
 }
 
 const SortableTableHead = ({ sortKey, currentSort, requestSort, children, className }: SortableTableHeadProps) => {
-    const isSorted = currentSort.key === sortKey;
-    const direction = isSorted ? currentSort.direction : 'none';
+  const isSorted = currentSort.key === sortKey;
+  const direction = isSorted ? currentSort.direction : 'none';
 
-    return (
-        <TableHead className={cn("cursor-pointer hover:bg-muted/50 p-2 h-10", className)} onClick={() => requestSort(sortKey)}> {/* Added padding/height */}
-            <div className="flex items-center gap-1 sm:gap-2"> {/* Reduced gap */}
-                <span className="text-xs sm:text-sm">{children}</span> {/* Responsive text */}
-                <ArrowUpDown
-                    className={cn("h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0", isSorted && "text-foreground")}
-                    strokeWidth={isSorted ? 2.5 : 1.5} // Adjusted stroke
-                />
-            </div>
-        </TableHead>
-    );
+  return (
+    <TableHead className={cn("cursor-pointer hover:bg-muted/50 p-2 h-10", className)} onClick={() => requestSort(sortKey)}> {/* Added padding/height */}
+      <div className="flex items-center gap-1 sm:gap-2"> {/* Reduced gap */}
+        <span className="text-xs sm:text-sm">{children}</span> {/* Responsive text */}
+        <ArrowUpDown
+          className={cn("h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0", isSorted && "text-foreground")}
+          strokeWidth={isSorted ? 2.5 : 1.5} // Adjusted stroke
+        />
+      </div>
+    </TableHead>
+  );
 };
 
 

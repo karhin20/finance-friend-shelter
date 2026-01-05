@@ -4,45 +4,105 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    /* Base Colors - Clean & Modern */
+    --background: 220 30% 98%;
+    /* Cool blueish white */
+    --foreground: 224 71% 4%;
+
+    /* Muted Colors - Refined Hierarchy */
+    --muted: 220 20% 96%;
+    --muted-foreground: 220 12% 42%;
+
+    /* UI Element Colors */
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 47.4% 11.2%;
+    --popover-foreground: 224 71% 4%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 47.4% 11.2%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --primary: 222.2 84% 4.9%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --radius: 0.5rem;
+    --card-foreground: 224 71% 4%;
+
+    /* Border & Input - Subtle & Clean */
+    --border: 220 20% 90%;
+    --input: 220 20% 90%;
+
+    /* Primary Color - Vibrant Blue (Tailwind Blue 600) */
+    --ring: 221 83% 53%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary Colors */
+    --secondary: 220 25% 95%;
+    --secondary-foreground: 221 83% 53%;
+
+    /* Semantic Colors */
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Border Radius */
+    --radius: 1rem;
+
+    /* Sidebar Colors */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 224 71% 4%;
+    --sidebar-primary: 221 83% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 25% 95%;
+    --sidebar-accent-foreground: 221 83% 53%;
+    --sidebar-border: 220 20% 90%;
+    --sidebar-ring: 221 83% 53%;
   }
 
   .dark {
-    --background: 224 71% 4%;
-    --foreground: 213 31% 91%;
-    --muted: 223 47% 11%;
-    --muted-foreground: 215.4 16.3% 56.9%;
-    --popover: 224 71% 4%;
-    --popover-foreground: 215 20.2% 65.1%;
-    --card: 224 71% 4%;
-    --card-foreground: 213 31% 91%;
-    --border: 216 34% 17%;
-    --input: 216 34% 17%;
-    --ring: 224 71% 4%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 1.2%;
-    --secondary: 212.2 47.4% 11.2%;
+    /* Base Colors - Deep & Rich */
+    --background: 222 47% 11%;
+    --foreground: 243 25% 96%;
+
+    /* Muted Colors - Better Contrast */
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+
+    /* UI Element Colors */
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+
+    /* Border & Input - Subtle Definition */
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+
+    /* Primary Color - Bright Blue */
+    --ring: 217 91% 60%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary Colors */
+    --secondary: 217 33% 17%;
     --secondary-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --radius: 0.5rem;
+
+    /* Semantic Colors */
+    --success: 142 70% 50%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 100%;
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Sidebar Colors */
+    --sidebar-background: 222 47% 11%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 217 33% 17%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217 33% 17%;
+    --sidebar-ring: 217 91% 60%;
   }
 
   * {
@@ -51,114 +111,110 @@
 
   body {
     @apply bg-background text-foreground;
-    /* Optional: Add font smoothing */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Smooth scrolling */
   html {
     scroll-behavior: smooth;
   }
 
-  /* Glass card effect */
-  .glass-card {
-    @apply bg-white/70 backdrop-blur-lg border border-white/20 shadow-sm;
-  }
-
-  /* Custom scrollbar */
+  /* Premium Scrollbar Styling */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-secondary rounded-full;
+    @apply bg-muted/40 rounded-full;
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-muted-foreground/30 rounded-full hover:bg-muted-foreground/50 transition-colors;
+    @apply bg-primary/20 rounded-full hover:bg-primary/30 transition-all duration-300;
   }
 
-  /* Page transitions */
-  .page-transition-enter {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-
-  .page-transition-enter-active {
-    opacity: 1;
-    transform: translateY(0);
-    transition: opacity 300ms, transform 300ms;
-  }
-
-  .page-transition-exit {
-    opacity: 1;
-  }
-
-  .page-transition-exit-active {
-    opacity: 0;
-    transition: opacity 300ms;
+  ::-webkit-scrollbar-thumb:active {
+    @apply bg-primary/40;
   }
 }
 
 @layer components {
   .nav-link {
-    @apply px-3 py-2 rounded-md transition-colors flex items-center gap-2;
+    @apply px-3 py-2 rounded-xl transition-all duration-300 ease-out flex items-center gap-2;
   }
 
   .nav-link-active {
-    @apply bg-primary/10 text-primary font-medium;
+    @apply bg-primary/10 text-primary font-semibold shadow-sm;
   }
 
   .stat-card {
-    @apply p-6 rounded-xl border bg-card text-card-foreground shadow-sm transition-all duration-200 hover:shadow-md;
-  }
-
-  .input-field {
-    @apply w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+    @apply p-6 rounded-[2rem] border border-border/40 bg-card text-card-foreground shadow-premium transition-all duration-300 hover:border-primary/30 hover:-translate-y-0.5 hover:shadow-premium-lg;
   }
 }
 
-/* Original Blue Light Theme */
-:root {
-    --background: 240 77.5% 97.3%;           /* Light gray background */
-    --foreground: 222.2 47.4% 11.2%;       /* Dark text color */
-    --muted: 210 40% 96.1%;                /* Very light gray for muted elements */
-    --muted-foreground: 215.4 16.3% 46.9%; /* Gray for muted text */
-    --popover: 0 0% 100%;                  /* White popover background */
-    --popover-foreground: 222.2 47.4% 11.2%;/* Dark text for popover */
-    --card: 0 0% 100%;                     /* White card background */
-    --card-foreground: 222.2 47.4% 11.2%;  /* Dark text for card */
-    --border: 214.3 31.8% 91.4%;           /* Light gray border */
-    --input: 214.3 31.8% 91.4%;            /* Light gray input background */
-    --ring: 222.2 84% 4.9%;                /* Blue ring color */
-    --primary: 220 70% 50%;                /* Medium blue for primary elements */
-    --primary-foreground: 0 0% 100%;       /* White text for primary elements */
-    --secondary: 210 40% 96.1%;             /* Light gray for secondary elements */
-    --secondary-foreground: 222.2 47.4% 11.2%;/* Dark text for secondary elements */
-    --destructive: 0 84.2% 60.2%;           /* Red for destructive actions */
-    --destructive-foreground: 0 0% 100%;   /* White text for destructive actions */
-    --radius: 0.5rem;                       /* Standard border radius */
-}
+@layer utilities {
 
-/* Dark Mode (adjustments for dark mode) */
-.dark {
-    --background: 230 30% 8%;              /* Dark background */
-    --foreground: 210 20% 85%;              /* Light text color */
-    --muted: 230 20% 20%;                 /* Darker muted background */
-    --muted-foreground: 210 10% 60%;       /* Lighter muted text */
-    --popover: 230 30% 8%;                 /* Dark popover background */
-    --popover-foreground: 210 20% 85%;     /* Light text for popover */
-    --card: 230 30% 8%;                    /* Dark card background */
-    --card-foreground: 210 20% 85%;        /* Light text for card */
-    --border: 230 30% 25%;                /* Darker border */
-    --input: 230 30% 25%;                 /* Darker input background */
-    --ring: 220 70% 40%;                 /* Adjusted blue ring color */
-    --primary: 220 70% 50%;                /* Medium blue for primary elements */
-    --primary-foreground: 0 0% 100%;       /* White text for primary elements */
-    --secondary: 230 20% 20%;                /* Darker secondary background */
-    --secondary-foreground: 210 20% 85%;    /* Light text for secondary elements */
-    --destructive: 0 70% 50%;               /* Adjusted red for destructive actions */
-    --destructive-foreground: 0 0% 100%;   /* White text for destructive actions */
+  /* Premium Multi-Layer Shadow System */
+  .shadow-premium {
+    box-shadow:
+      0 1px 2px 0 rgba(0, 0, 0, 0.03),
+      0 2px 4px 0 rgba(0, 0, 0, 0.04),
+      0 4px 8px 0 rgba(0, 0, 0, 0.05);
+  }
+
+  .shadow-premium-lg {
+    box-shadow:
+      0 2px 4px 0 rgba(0, 0, 0, 0.04),
+      0 6px 12px 0 rgba(0, 0, 0, 0.06),
+      0 12px 24px 0 rgba(0, 0, 0, 0.08);
+  }
+
+  .shadow-premium-xl {
+    box-shadow:
+      0 4px 6px 0 rgba(0, 0, 0, 0.05),
+      0 10px 20px 0 rgba(0, 0, 0, 0.08),
+      0 20px 40px 0 rgba(0, 0, 0, 0.1);
+  }
+
+  .shadow-hover {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .shadow-hover:hover {
+    box-shadow:
+      0 4px 8px 0 rgba(0, 0, 0, 0.06),
+      0 12px 24px 0 rgba(0, 0, 0, 0.08),
+      0 20px 32px 0 rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+  }
+
+  .clean-card {
+    @apply bg-card/95 backdrop-blur-sm border border-border/50 shadow-premium rounded-[2rem];
+  }
+
+  .hero-card {
+    @apply relative overflow-hidden rounded-[2.5rem] bg-primary text-primary-foreground p-10 shadow-premium-xl transition-all duration-500;
+  }
+
+  .hero-card::before {
+    content: '';
+    @apply absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl;
+  }
+
+  .expense-item {
+    @apply flex items-center justify-between p-5 rounded-[1.75rem] bg-card border border-border/40 transition-all duration-300 hover:border-primary/30 hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer;
+  }
+
+  .icon-box {
+    @apply flex h-14 w-14 items-center justify-center rounded-[1.25rem] bg-secondary transition-all duration-300 group-hover:scale-110 shadow-sm;
+  }
+
+  /* Smooth Animations */
+  .animate-smooth {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .animate-smooth-slow {
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
 }

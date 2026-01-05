@@ -1,4 +1,4 @@
-// Service Worker for Finance Friend PWA
+
 
 const CACHE_NAME = 'diligence-finance-cache-v1';
 const DATA_CACHE_NAME = 'diligence-finance-data-cache-v1';

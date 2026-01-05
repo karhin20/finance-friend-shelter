@@ -9,6 +9,7 @@ type AuthContextType = {
   user: User | null;
   signUp: (email: string, password: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>; // Add deleteAccount type
   loading: boolean;
@@ -99,6 +100,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const signInWithGoogle = async () => {
+    try {
+      setLoading(true);
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/dashboard`,
+        },
+      });
+
+      if (error) throw error;
+      // Note: The redirect happens automatically, so the user won't see this toast
+      // unless there's an error
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to sign in with Google",
+        variant: "destructive",
+      });
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const signOut = async () => {
     let isMounted = true; // Local mount check for this specific async operation
 
@@ -114,8 +140,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // Reset application state directly on error (if appropriate for your UX)
         // Consider if you want to clear state even if sign-out technically failed on the server
         if (isMounted) {
-             setSession(null);
-             setUser(null);
+          setSession(null);
+          setUser(null);
         }
 
         // Still throw the error to show it to the user / allow component handling
@@ -125,8 +151,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Explicitly clear session/user state on successful sign-out
       // This makes the state change immediate and less dependent on the listener
       if (isMounted) {
-          setSession(null);
-          setUser(null);
+        setSession(null);
+        setUser(null);
       }
       // The onAuthStateChange listener will still fire, but it will just be setting
       // the state to null again, which is harmless.
@@ -144,14 +170,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       // Ensure loading is always set to false eventually
       if (isMounted) {
-         setLoading(false);
+        setLoading(false);
       }
     }
-
-    // Cleanup function for the local mount check
-    return () => {
-        isMounted = false;
-    };
   };
 
   // Add the deleteAccount function
@@ -188,17 +209,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       throw error;
     } finally {
       if (isMounted) { // Check before setting state
-         setLoading(false);
+        setLoading(false);
       }
     }
-    // Cleanup for mount check
-    return () => {
-        isMounted = false;
-    };
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, signUp, signIn, signOut, deleteAccount, loading }}>
+    <AuthContext.Provider value={{ session, user, signUp, signIn, signInWithGoogle, signOut, deleteAccount, loading }}>
       {children}
     </AuthContext.Provider>
   );

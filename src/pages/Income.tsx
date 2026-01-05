@@ -7,11 +7,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
-import { CalendarIcon, Plus, Search, ArrowUpDown, Pencil, Trash2, AlertCircle, Settings as SettingsIcon, Loader2 } from 'lucide-react';
+import { CalendarIcon, Plus, Search, ArrowUpDown, Pencil, Trash2, AlertCircle, Settings as SettingsIcon, Loader2, Wallet, TrendingUp, TrendingDown, DollarSign, CreditCard } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useFinance } from '@/contexts/FinanceContext';
-import { supabase, Income, formatCurrency, formatDate, Category } from '@/lib/supabase';
+import { supabase, Income, formatDate, Category } from '@/lib/supabase';
+import { useCurrency } from '@/contexts/CurrencyContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useNavigate, Link } from 'react-router-dom';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -40,12 +42,14 @@ const calculateNextOccurrence = (startDate: Date, frequency: 'weekly' | 'monthly
 const IncomePage = () => {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { formatCurrency } = useCurrency();
   const {
     incomeQuery,
+    categoriesQuery,
     addIncomeMutation,
     updateIncomeMutation,
     deleteIncomeMutation,
-    categoriesQuery
+    addDefaultCategoriesMutation
   } = useFinance();
 
   const { data: income = [], isLoading: isIncomeLoading, isError: isIncomeError, error: incomeError } = incomeQuery;
@@ -108,23 +112,23 @@ const IncomePage = () => {
 
   const sortedIncome = [...filteredIncome].sort((a, b) => {
     if (!sortConfig) return 0;
-    
+
     const { key, direction } = sortConfig;
-    
+
     if (key === 'date') {
-      return direction === 'asc' 
+      return direction === 'asc'
         ? new Date(a[key]).getTime() - new Date(b[key]).getTime()
         : new Date(b[key]).getTime() - new Date(a[key]).getTime();
     }
-    
+
     if (key === 'amount') {
       return direction === 'asc' ? a[key] - b[key] : b[key] - a[key];
     }
-    
+
     // Handle string comparison (description)
     const aValue = (a[key] || '').toString();
     const bValue = (b[key] || '').toString();
-    return direction === 'asc' 
+    return direction === 'asc'
       ? aValue.localeCompare(bValue)
       : bValue.localeCompare(aValue);
   });
@@ -143,6 +147,11 @@ const IncomePage = () => {
   // Filter categories for income type
   const incomeCategories = useMemo(() => allCategories.filter(c => c.type === 'income'), [allCategories]);
 
+  // Update unique categories for filtering dropdown based on fetched income categories
+  const uniqueCategoriesForFilter = useMemo(() =>
+    [...new Set(incomeCategories.map((cat: Category) => cat.name))]
+    , [incomeCategories]);
+
   // Add a function to open the edit dialog
   const openEditDialog = (income: Income) => {
     setEditingIncome(income);
@@ -156,39 +165,39 @@ const IncomePage = () => {
   // Add a function to handle the edit submission
   const handleEditIncome = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!editingIncome || !editSource) return;
-    
+
     // Validate the amount
     const amountNum = parseFloat(editAmount);
     if (isNaN(amountNum) || amountNum <= 0) {
-       toast({ title: "Invalid Amount", description: "Please enter a valid positive amount.", variant: "destructive" });
+      toast({ title: "Invalid Amount", description: "Please enter a valid positive amount.", variant: "destructive" });
       return;
     }
-    
+
     // Find the category ID based on the selected name
     const selectedCategory = incomeCategories.find(cat => cat.name === editSource);
     if (!selectedCategory) {
-        toast({ title: "Category Error", description: "Selected category not found.", variant: "destructive" });
-        return;
+      toast({ title: "Category Error", description: "Selected category not found.", variant: "destructive" });
+      return;
     }
 
     updateIncomeMutation.mutate({
       id: editingIncome.id,
       updates: {
-          amount: amountNum,
-          date: editDate.toISOString(),
+        amount: amountNum,
+        date: editDate.toISOString(),
         category: editSource,
         description: editDescription.trim() || null,
       }
     }, {
       onSuccess: () => {
-      setEditDialogOpen(false);
+        setEditDialogOpen(false);
         toast({ title: "Income Updated", description: "Transaction details saved." });
       },
       onError: (error) => {
-         console.error("Error updating income:", error);
-         toast({ title: "Error", description: `Failed to update income: ${error.message}`, variant: "destructive" });
+        console.error("Error updating income:", error);
+        toast({ title: "Error", description: `Failed to update income: ${error.message}`, variant: "destructive" });
       }
     });
   };
@@ -218,19 +227,19 @@ const IncomePage = () => {
     e.preventDefault();
     // Basic validation
     if (!amount || !date || !source || !user) {
-       toast({ title: "Missing Fields", description: "Amount, Date, Source, and User are required.", variant: "destructive" });
-       return;
+      toast({ title: "Missing Fields", description: "Amount, Date, Source, and User are required.", variant: "destructive" });
+      return;
     }
     const amountNum = parseFloat(amount);
     if (isNaN(amountNum) || amountNum <= 0) {
-       toast({ title: "Invalid Amount", description: "Please enter a valid positive amount.", variant: "destructive" });
-       return;
+      toast({ title: "Invalid Amount", description: "Please enter a valid positive amount.", variant: "destructive" });
+      return;
     }
 
     const selectedCategory = incomeCategories.find(cat => cat.name === source);
     if (!selectedCategory) {
-        toast({ title: "Category Error", description: "Selected category not found.", variant: "destructive" });
-        return;
+      toast({ title: "Category Error", description: "Selected category not found.", variant: "destructive" });
+      return;
     }
 
     if (isRecurring) {
@@ -278,11 +287,11 @@ const IncomePage = () => {
             }
           });
         } else {
-           // Reset form if only rule was created
-           setAmount(''); setDate(new Date()); setSource(''); setDescription(''); setIsRecurring(false); setFrequency('monthly'); setCreateInitialTransaction(true);
+          // Reset form if only rule was created
+          setAmount(''); setDate(new Date()); setSource(''); setDescription(''); setIsRecurring(false); setFrequency('monthly'); setCreateInitialTransaction(true);
         }
 
-    } catch (error: any) {
+      } catch (error: any) {
         console.error("Error saving recurring income:", error);
         toast({ title: "Error Saving Rule", description: `Failed to save recurring rule: ${error.message}`, variant: "destructive" });
       }
@@ -319,28 +328,7 @@ const IncomePage = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-8">
-        {/* Page header */}
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Income</h1>
-          <p className="text-muted-foreground">Add and manage your income sources</p>
-        </div>
-
-        {/* === Onboarding Alert === */}
-        {!isLoadingCategories && incomeCategories.length === 0 && (
-          <Alert variant="default" className="bg-blue-50 border border-blue-200 text-blue-800">
-            <SettingsIcon className="h-4 w-4 !text-blue-600" />
-            <AlertTitle className="text-blue-900 font-semibold">Set Up Your Income Categories!</AlertTitle>
-            <AlertDescription>
-              You haven't added any income categories yet. Go to{' '}
-              <Link to="/settings" className="font-medium underline hover:text-blue-900">
-                Settings &gt; Categories
-              </Link>
-              {' '}to create sources like "Salary", "Freelance", etc., before adding income.
-            </AlertDescription>
-          </Alert>
-        )}
-        {/* === End Onboarding Alert === */}
+      <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Add Income Form */}
@@ -353,6 +341,41 @@ const IncomePage = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Quick Suggestions */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Quick Suggestions</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: 'Salary', category: 'Salary', icon: '💼', color: 'text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-200' },
+                      { label: 'Freelance', category: 'Freelance', icon: '💻', color: 'text-blue-600 bg-blue-500/10 hover:bg-blue-500/20 border-blue-200' },
+                      { label: 'Gifts', category: 'Gifts', icon: '🎁', color: 'text-pink-500 bg-pink-500/10 hover:bg-pink-500/20 border-pink-200' },
+                      { label: 'Interest', category: 'Interest', icon: '📈', color: 'text-amber-600 bg-amber-500/10 hover:bg-amber-500/20 border-amber-200' },
+                      { label: 'Dividend', category: 'Investment', icon: '💰', color: 'text-purple-600 bg-purple-500/10 hover:bg-purple-500/20 border-purple-200' },
+                    ].map((suggestion) => (
+                      <Button
+                        key={suggestion.label}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className={cn("h-7 text-xs px-2.5 py-0.5 rounded-full transition-colors border", suggestion.color)}
+                        onClick={() => {
+                          setDescription(suggestion.label);
+                          // Try to find the category/source in the user's categories
+                          const foundCat = incomeCategories.find(c =>
+                            c.name.toLowerCase() === suggestion.category.toLowerCase() ||
+                            c.name.toLowerCase().includes(suggestion.label.toLowerCase())
+                          );
+                          if (foundCat) {
+                            setSource(foundCat.name);
+                          }
+                        }}
+                      >
+                        <span className="mr-1.5">{suggestion.icon}</span>
+                        {suggestion.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="amount">Amount</Label>
                   <Input
@@ -406,8 +429,8 @@ const IncomePage = () => {
                     <SelectTrigger id="source">
                       <SelectValue placeholder={
                         isLoadingCategories ? "Loading..." :
-                        incomeCategories.length === 0 ? "Add categories in Settings" :
-                        "Select source"
+                          incomeCategories.length === 0 ? "Add categories in Settings" :
+                            "Select source"
                       } />
                     </SelectTrigger>
                     <SelectContent>
@@ -436,43 +459,43 @@ const IncomePage = () => {
                       id="recurring-income"
                       checked={isRecurring}
                       onCheckedChange={(checked) => {
-                          setIsRecurring(checked === true);
-                          // Reset createInitialTransaction when unchecking recurring
-                          if (checked !== true) setCreateInitialTransaction(true);
+                        setIsRecurring(checked === true);
+                        // Reset createInitialTransaction when unchecking recurring
+                        if (checked !== true) setCreateInitialTransaction(true);
                       }}
                       disabled={incomeCategories.length === 0}
                     />
                     <Label htmlFor="recurring-income" className="font-medium">Set as Recurring Income?</Label>
                   </div>
-                  
+
                   {isRecurring && (
                     <div className="space-y-4 pl-6 pt-2">
-                       {/* Frequency Select */}
-                       <div>
-                          <Label htmlFor="frequency-income">Frequency</Label>
-                          <Select value={frequency} onValueChange={(v: any) => setFrequency(v)} required={isRecurring}>
-                            <SelectTrigger id="frequency-income">
-                              <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="weekly">Weekly</SelectItem>
-                        <SelectItem value="monthly">Monthly</SelectItem>
-                        <SelectItem value="yearly">Yearly</SelectItem>
-                      </SelectContent>
-                    </Select>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Starts on the selected date ({format(date, "PPP")}).
-                          </p>
-                       </div>
-                       {/* New Checkbox for Initial Transaction */}
-                       <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="create-initial-income"
-                            checked={createInitialTransaction}
-                            onCheckedChange={(checked) => setCreateInitialTransaction(checked === true)}
-                          />
-                          <Label htmlFor="create-initial-income" className="text-sm font-normal">Add first transaction now?</Label>
-                       </div>
+                      {/* Frequency Select */}
+                      <div>
+                        <Label htmlFor="frequency-income">Frequency</Label>
+                        <Select value={frequency} onValueChange={(v: any) => setFrequency(v)} required={isRecurring}>
+                          <SelectTrigger id="frequency-income">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="weekly">Weekly</SelectItem>
+                            <SelectItem value="monthly">Monthly</SelectItem>
+                            <SelectItem value="yearly">Yearly</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Starts on the selected date ({format(date, "PPP")}).
+                        </p>
+                      </div>
+                      {/* New Checkbox for Initial Transaction */}
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="create-initial-income"
+                          checked={createInitialTransaction}
+                          onCheckedChange={(checked) => setCreateInitialTransaction(checked === true)}
+                        />
+                        <Label htmlFor="create-initial-income" className="text-sm font-normal">Add first transaction now?</Label>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -491,163 +514,223 @@ const IncomePage = () => {
           </Card>
 
           {/* Income List */}
-          <Card className="lg:col-span-2 shadow-sm">
-            <CardHeader>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <CardTitle>Income History</CardTitle>
-                  <CardDescription>
-                    Total: {formatCurrency(totalIncome)}
-                  </CardDescription>
+          <div className="lg:col-span-2 space-y-6">
+            {/* Summary Card */}
+            <Card className="shadow-sm border-primary/20 bg-primary/5">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Income</CardTitle>
+                <TrendingUp className="h-4 w-4 text-primary" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-primary flex items-center">
+                  <Wallet className="mr-2 h-5 w-5 opacity-75" />
+                  {formatCurrency(totalIncome)}
                 </div>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search income..."
-                    className="pl-10 w-full sm:w-[250px]"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
+                <p className="text-xs text-muted-foreground mt-1">
+                  {localTimeframe === 'all' ? 'All time' : localTimeframe === 'month' ? 'This month' : 'This week'}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm">
+              <CardHeader>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <CardTitle>Income History</CardTitle>
+                    <CardDescription>
+                      Recent transactions
+                    </CardDescription>
+                  </div>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search income..."
+                      className="pl-10 w-full sm:w-[250px]"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
                 </div>
-              </div>
-              {/* +++ ADDED: Timeframe filter buttons +++ */}
-              <div className="flex space-x-2 mt-4">
-                <Button
-                  variant={localTimeframe === 'week' ? 'default' : 'outline'}
-                  onClick={() => setLocalTimeframe('week')}
-                  size="sm"
-                >
-                  This Week
-                </Button>
-                <Button
-                  variant={localTimeframe === 'month' ? 'default' : 'outline'}
-                  onClick={() => setLocalTimeframe('month')}
-                  size="sm"
-                >
-                  This Month
-                </Button>
-                <Button
-                  variant={localTimeframe === 'all' ? 'default' : 'outline'}
-                  onClick={() => setLocalTimeframe('all')}
-                  size="sm"
-                >
-                  All Time
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {isIncomeLoading ? (
-                <div className="space-y-4 animate-pulse">
-                  {[...Array(5)].map((_, i) => (
-                    <div key={i} className="flex justify-between p-2">
-                      <div className="h-6 w-24 bg-muted rounded"></div>
-                      <div className="h-6 w-20 bg-muted rounded"></div>
+                {/* +++ ADDED: Timeframe filter buttons +++ */}
+                <div className="flex space-x-2 mt-4">
+                  <Button
+                    variant={localTimeframe === 'week' ? 'default' : 'outline'}
+                    onClick={() => setLocalTimeframe('week')}
+                    size="sm"
+                  >
+                    This Week
+                  </Button>
+                  <Button
+                    variant={localTimeframe === 'month' ? 'default' : 'outline'}
+                    onClick={() => setLocalTimeframe('month')}
+                    size="sm"
+                  >
+                    This Month
+                  </Button>
+                  <Button
+                    variant={localTimeframe === 'all' ? 'default' : 'outline'}
+                    onClick={() => setLocalTimeframe('all')}
+                    size="sm"
+                  >
+                    All Time
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {isIncomeLoading ? (
+                  <div className="space-y-4 animate-pulse">
+                    {[...Array(5)].map((_, i) => (
+                      <div key={i} className="flex justify-between p-2">
+                        <div className="h-6 w-24 bg-muted rounded"></div>
+                        <div className="h-6 w-20 bg-muted rounded"></div>
+                      </div>
+                    ))}
+                  </div>
+                ) : isIncomeError ? (
+                  <div className="text-center py-12 text-destructive flex flex-col items-center gap-2">
+                    <AlertCircle className="h-6 w-6" />
+                    <p className="font-semibold">Error Loading Income</p>
+                    <p className="text-sm">{incomeError?.message || 'An unknown error occurred.'}</p>
+                  </div>
+                ) : sortedIncome.length > 0 ? (
+                  <div className="rounded-md border">
+                    {/* Desktop Table View */}
+                    <div className="hidden md:block">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead
+                              className="cursor-pointer hover:bg-muted/50"
+                              onClick={() => requestSort('date')}
+                            >
+                              <div className="flex items-center space-x-1">
+                                <span>Date</span>
+                                <ArrowUpDown className="h-3 w-3" />
+                              </div>
+                            </TableHead>
+                            <TableHead
+                              className="cursor-pointer hover:bg-muted/50"
+                              onClick={() => requestSort('amount')}
+                            >
+                              <div className="flex items-center space-x-1">
+                                <span>Amount</span>
+                                <ArrowUpDown className="h-3 w-3" />
+                              </div>
+                            </TableHead>
+                            <TableHead
+                              className="cursor-pointer hover:bg-muted/50"
+                              onClick={() => requestSort('category')}
+                            >
+                              <div className="flex items-center space-x-1">
+                                <span>Source/Category</span>
+                                <ArrowUpDown className="h-3 w-3" />
+                              </div>
+                            </TableHead>
+                            <TableHead
+                              className="cursor-pointer hover:bg-muted/50"
+                              onClick={() => requestSort('description')}
+                            >
+                              <div className="flex items-center space-x-1">
+                                <span>Description</span>
+                                <ArrowUpDown className="h-3 w-3" />
+                              </div>
+                            </TableHead>
+                            <TableHead>
+                              <div className="flex items-center space-x-1">
+                                <span>Actions</span>
+                              </div>
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sortedIncome.map((item) => {
+                            return (
+                              <TableRow key={item.id} className="group hover:bg-transparent data-[state=selected]:bg-transparent">
+                                <TableCell className="font-medium">{formatDate(item.date)}</TableCell>
+                                <TableCell className="text-income font-bold">{formatCurrency(item.amount)}</TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {item.category || "-"}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground max-w-[200px] truncate">
+                                  {item.description || "-"}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex items-center justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => openEditDialog(item)}
+                                      className="h-8 w-8 hover:text-primary hover:bg-primary/10"
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                      <span className="sr-only">Edit</span>
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => confirmDelete(item.id)}
+                                      className="h-8 w-8 hover:text-destructive hover:bg-destructive/10"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                      <span className="sr-only">Delete</span>
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
                     </div>
-                  ))}
-                </div>
-              ) : isIncomeError ? (
-                <div className="text-center py-12 text-destructive flex flex-col items-center gap-2">
-                  <AlertCircle className="h-6 w-6"/>
-                  <p className="font-semibold">Error Loading Income</p>
-                  <p className="text-sm">{incomeError?.message || 'An unknown error occurred.'}</p>
-                </div>
-              ) : sortedIncome.length > 0 ? (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead 
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => requestSort('date')}
-                        >
-                          <div className="flex items-center space-x-1">
-                            <span>Date</span>
-                            <ArrowUpDown className="h-3 w-3" />
-                          </div>
-                        </TableHead>
-                        <TableHead 
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => requestSort('amount')}
-                        >
-                          <div className="flex items-center space-x-1">
-                            <span>Amount</span>
-                            <ArrowUpDown className="h-3 w-3" />
-                          </div>
-                        </TableHead>
-                        <TableHead 
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => requestSort('category')}
-                        >
-                          <div className="flex items-center space-x-1">
-                            <span>Source/Category</span>
-                            <ArrowUpDown className="h-3 w-3" />
-                          </div>
-                        </TableHead>
-                        <TableHead 
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => requestSort('description')}
-                        >
-                          <div className="flex items-center space-x-1">
-                            <span>Description</span>
-                            <ArrowUpDown className="h-3 w-3" />
-                          </div>
-                        </TableHead>
-                        <TableHead>
-                          <div className="flex items-center space-x-1">
-                            <span>Actions</span>
-                          </div>
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {sortedIncome.map((item) => {
-                        return (
-                        <TableRow key={item.id}>
-                          <TableCell className="font-medium">{formatDate(item.date)}</TableCell>
-                          <TableCell className="text-income">{formatCurrency(item.amount)}</TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {item.category || "-"}
-                            </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {item.description || "-"}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex space-x-1">
-                              <Button 
-                                variant="ghost" 
-                                size="icon"
-                                onClick={() => openEditDialog(item)}
-                                className="text-muted-foreground hover:text-primary"
-                                title="Edit"
-                                  disabled={updateIncomeMutation.isLoading || deleteIncomeMutation.isLoading}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="icon"
-                                onClick={() => confirmDelete(item.id)}
-                                className="text-muted-foreground hover:text-destructive"
-                                title="Delete"
-                                  disabled={updateIncomeMutation.isLoading || deleteIncomeMutation.isLoading}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+
+                    {/* Mobile Card View */}
+                    <div className="md:hidden divide-y">
+                      {sortedIncome.map((item) => (
+                        <div key={item.id} className="p-4 flex flex-col gap-3">
+                          <div className="flex justify-between items-start">
+                            <div className="flex flex-col">
+                              <span className="font-bold text-base">{item.category || "Uncategorized"}</span>
+                              <span className="text-sm text-muted-foreground">{formatDate(item.date)}</span>
                             </div>
-                          </TableCell>
-                        </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <p>No income transactions found for the selected date range.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                            <span className="font-black text-income text-lg">{formatCurrency(item.amount)}</span>
+                          </div>
+                          {item.description && (
+                            <div className="text-sm text-muted-foreground bg-muted/30 p-2 rounded-md">
+                              {item.description}
+                            </div>
+                          )}
+                          <div className="flex justify-end gap-2 mt-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openEditDialog(item)}
+                              className="h-8 text-xs"
+                              disabled={updateIncomeMutation.isLoading || deleteIncomeMutation.isLoading}
+                            >
+                              <Pencil className="h-3 w-3 mr-1" /> Edit
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => confirmDelete(item.id)}
+                              className="h-8 text-xs"
+                              disabled={updateIncomeMutation.isLoading || deleteIncomeMutation.isLoading}
+                            >
+                              <Trash2 className="h-3 w-3 mr-1" /> Delete
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <p>No income transactions found for the selected date range.</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
 
@@ -660,7 +743,7 @@ const IncomePage = () => {
               Update income transaction details.
             </DialogDescription>
           </DialogHeader>
-          
+
           <form onSubmit={handleEditIncome} className="space-y-4 py-2">
             <div className="space-y-2">
               <Label htmlFor="editAmount">Amount</Label>
@@ -675,7 +758,7 @@ const IncomePage = () => {
                 required
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="editDate">Date</Label>
               <Popover>
@@ -703,7 +786,7 @@ const IncomePage = () => {
                 </PopoverContent>
               </Popover>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="editSource">Source/Category</Label>
               <Select value={editSource} onValueChange={setEditSource} required>
@@ -718,7 +801,7 @@ const IncomePage = () => {
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="editDescription">Description (Optional)</Label>
               <Textarea
@@ -728,17 +811,17 @@ const IncomePage = () => {
                 onChange={(e) => setEditDescription(e.target.value)}
               />
             </div>
-            
+
             <DialogFooter>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => setEditDialogOpen(false)}
                 type="button"
                 disabled={updateIncomeMutation.isLoading}
               >
                 Cancel
               </Button>
-              <Button 
+              <Button
                 type="submit"
                 disabled={updateIncomeMutation.isLoading}
               >
@@ -764,15 +847,15 @@ const IncomePage = () => {
             </AlertDescription>
           </Alert>
           <DialogFooter>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => setDeleteDialogOpen(false)}
               disabled={deleteIncomeMutation.isLoading}
             >
               Cancel
             </Button>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
               onClick={handleDelete}
               disabled={deleteIncomeMutation.isLoading}
             >

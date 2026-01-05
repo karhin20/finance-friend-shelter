@@ -3,14 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { SocialAuthButtons } from '@/components/SocialAuthButtons';
 
 const Index = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
   const { signIn, signUp, user } = useAuth();
   const navigate = useNavigate();
 
@@ -20,31 +20,20 @@ const Index = () => {
     return null;
   }
 
-  const handleSignIn = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
-    
-    try {
-      setIsSubmitting(true);
-      await signIn(email, password);
-      navigate('/dashboard');
-    } catch (error) {
-      console.error('Sign in error:', error);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !password) return;
-    
+    setIsSubmitting(true);
     try {
-      setIsSubmitting(true);
-      await signUp(email, password);
-      // Stay on the page as user needs to verify email
+      if (isSignUp) {
+        await signUp(email, password);
+      } else {
+        await signIn(email, password);
+        navigate('/dashboard');
+      }
     } catch (error) {
-      console.error('Sign up error:', error);
+      console.error('Auth error:', error);
     } finally {
       setIsSubmitting(false);
     }
@@ -52,179 +41,148 @@ const Index = () => {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Hero section */}
       <div className="flex-1 flex flex-col md:flex-row">
-        {/* Left column: App info */}
-        <div className="flex-1 flex flex-col justify-center p-8 md:p-12 animate-fade-up">
-          <div className="max-w-xl mx-auto md:mx-0">
+        {/* Left column: Brand story and value proposition */}
+        <div
+          className="flex-1 flex flex-col justify-center p-8 md:p-12 lg:p-16 animate-fade-up bg-muted border-r relative overflow-hidden"
+          style={{
+            backgroundImage: `url(/auth-background.jpg)`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+          }}
+        >
+          {/* Overlay for better text readability */}
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm"></div>
+
+          <div className="max-w-md mx-auto md:mx-0 relative z-10">
             <div className="flex items-center gap-2 mb-8">
-              <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
-                <span className="text-primary-foreground font-semibold text-lg">D</span>
+              <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center shadow-lg">
+                <span className="text-primary-foreground font-bold text-2xl">D</span>
               </div>
-              <h1 className="text-2xl font-bold">Diligence Finance</h1>
+              <h1 className="text-2xl font-bold tracking-tight">Diligence Finance</h1>
             </div>
-            
-            <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
-              Take control of your financial life
+
+            <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-6 leading-tight">
+              Start your journey to financial freedom.
             </h2>
-            
-            <p className="text-lg text-muted-foreground mb-8">
-              Track expenses, manage income, and gain insights into your spending habits with our intuitive finance management app.
+
+            <p className="text-lg text-muted-foreground mb-6 leading-relaxed">
+              Take control of your finances with powerful expense tracking and smart money management designed for you.
             </p>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="flex items-start">
-                <div className="mr-4 mt-1 bg-primary/10 p-2 rounded-full">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M13.3334 4L6.00002 11.3333L2.66669 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="font-medium mb-1">Expense Tracking</h3>
-                  <p className="text-muted-foreground text-sm">Log and categorize expenses for better visibility</p>
-                </div>
+
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-1.5">
+                <svg className="w-4 h-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span className="font-medium">Free to use</span>
               </div>
-              <div className="flex items-start">
-                <div className="mr-4 mt-1 bg-primary/10 p-2 rounded-full">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M13.3334 4L6.00002 11.3333L2.66669 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="font-medium mb-1">Income Management</h3>
-                  <p className="text-muted-foreground text-sm">Record and track all sources of income</p>
-                </div>
+              <div className="flex items-center gap-1.5">
+                <svg className="w-4 h-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span className="font-medium">Easy to track</span>
               </div>
-              <div className="flex items-start">
-                <div className="mr-4 mt-1 bg-primary/10 p-2 rounded-full">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M13.3334 4L6.00002 11.3333L2.66669 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="font-medium mb-1">Insightful Reports</h3>
-                  <p className="text-muted-foreground text-sm">Visualize spending patterns with charts and reports</p>
-                </div>
-              </div>
-              <div className="flex items-start">
-                <div className="mr-4 mt-1 bg-primary/10 p-2 rounded-full">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M13.3334 4L6.00002 11.3333L2.66669 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="font-medium mb-1">Financial Overview</h3>
-                  <p className="text-muted-foreground text-sm">Get a complete picture of your financial health</p>
-                </div>
+              <div className="flex items-center gap-1.5">
+                <svg className="w-4 h-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span className="font-medium">Made for you</span>
               </div>
             </div>
           </div>
         </div>
-        
+
         {/* Right column: Auth form */}
-        <div className="flex-1 flex items-center justify-center p-8 md:p-12 animate-fade-in">
-          <div className="w-full max-w-md">
-            <Card className="mx-auto">
-              <CardHeader>
-                <CardTitle>Get Started</CardTitle>
-                <CardDescription>Sign in or create an account to continue</CardDescription>
-              </CardHeader>
-              
-              <Tabs defaultValue="signin" className="w-full">
-                <TabsList className="grid grid-cols-2 mx-6">
-                  <TabsTrigger value="signin">Sign In</TabsTrigger>
-                  <TabsTrigger value="signup">Sign Up</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="signin">
-                  <form onSubmit={handleSignIn}>
-                    <CardContent className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="email">Email</Label>
-                        <Input
-                          id="email"
-                          type="email"
-                          placeholder="name@example.com"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="password">Password</Label>
-                          <a href="#" className="text-xs text-primary hover:underline">
-                            Forgot password?
-                          </a>
-                        </div>
-                        <Input
-                          id="password"
-                          type="password"
-                          placeholder="••••••••"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          required
-                        />
-                      </div>
-                    </CardContent>
-                    <CardFooter>
-                      <Button type="submit" className="w-full" disabled={isSubmitting}>
-                        {isSubmitting ? "Signing in..." : "Sign In"}
-                      </Button>
-                    </CardFooter>
-                  </form>
-                </TabsContent>
-                
-                <TabsContent value="signup">
-                  <form onSubmit={handleSignUp}>
-                    <CardContent className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="email-signup">Email</Label>
-                        <Input
-                          id="email-signup"
-                          type="email"
-                          placeholder="name@example.com"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="password-signup">Password</Label>
-                        <Input
-                          id="password-signup"
-                          type="password"
-                          placeholder="••••••••"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          required
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Password must be at least 6 characters long
-                        </p>
-                      </div>
-                    </CardContent>
-                    <CardFooter>
-                      <Button type="submit" className="w-full" disabled={isSubmitting}>
-                        {isSubmitting ? "Creating account..." : "Create Account"}
-                      </Button>
-                    </CardFooter>
-                  </form>
-                </TabsContent>
-              </Tabs>
-            </Card>
+        <div className="flex-1 flex items-center justify-center p-8 md:p-12 animate-fade-in bg-background">
+          <div className="w-full max-w-sm space-y-8">
+            <div className="space-y-2">
+              <h3 className="text-3xl font-bold tracking-tight">
+                {isSignUp ? "Create an account" : "Welcome back"}
+              </h3>
+              <p className="text-muted-foreground">
+                {isSignUp ? "Get started on your financial journey" : "Sign in to continue your journey"}
+              </p>
+            </div>
+
+            <div className="space-y-6">
+              {/* Social Auth Buttons */}
+              <SocialAuthButtons />
+
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="name@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      className="bg-background h-11"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="password">Password</Label>
+                      {!isSignUp && (
+                        <a href="#" className="text-sm text-primary hover:underline font-medium" tabIndex={-1}>
+                          Forgot password?
+                        </a>
+                      )}
+                    </div>
+                    <Input
+                      id="password"
+                      type="password"
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      className="bg-background h-11"
+                    />
+                    {isSignUp && (
+                      <p className="text-xs text-muted-foreground">
+                        Must be at least 6 characters
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <Button
+                    type="submit"
+                    className="w-full h-11 font-semibold text-base transition-all duration-200 hover:scale-[1.02] hover:shadow-lg"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting
+                      ? (isSignUp ? "Creating account..." : "Signing in...")
+                      : (isSignUp ? "Create Account" : "Sign In")}
+                  </Button>
+
+                  <div className="text-center text-base">
+                    <span className="text-muted-foreground">
+                      {isSignUp ? "Already have an account? " : "Don't have an account? "}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSignUp(!isSignUp);
+                        setEmail('');
+                        setPassword('');
+                      }}
+                      className="text-primary hover:underline font-semibold transition-all duration-200 hover:scale-105 inline-block"
+                    >
+                      {isSignUp ? "Sign in" : "Sign up"}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       </div>
-      
-      {/* Footer */}
-      <footer className="py-6 md:py-0 border-t">
-        <div className="container flex flex-col items-center justify-between gap-4 md:h-16 md:flex-row">
-          <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} Diligence Finance. All rights reserved.
-          </p>
-        </div>
-      </footer>
     </div>
   );
 };

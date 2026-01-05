@@ -8,11 +8,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
-import { CalendarIcon, Plus, Search, ArrowUpDown, Trash2, Filter, Pencil, Loader2 } from 'lucide-react';
+import { CalendarIcon, Plus, Search, ArrowUpDown, Trash2, Filter, Pencil, Loader2, TrendingDown, Receipt, ShoppingCart, DollarSign, Wallet } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useFinance } from '@/contexts/FinanceContext';
-import { Expense, formatCurrency, formatDate, Category } from '@/lib/supabase';
+import { Expense, formatDate, Category } from '@/lib/supabase';
+import { useCurrency } from '@/contexts/CurrencyContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -42,12 +44,14 @@ const calculateNextOccurrence = (startDate: Date, frequency: 'weekly' | 'monthly
 const ExpensesPage = () => {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { formatCurrency } = useCurrency();
   const {
     expensesQuery,
+    categoriesQuery,
     addExpenseMutation,
     updateExpenseMutation,
     deleteExpenseMutation,
-    categoriesQuery
+    addDefaultCategoriesMutation
   } = useFinance();
 
   const { data: expenses = [], isLoading: isExpensesLoading, isError: isExpensesError, error: expensesError } = expensesQuery;
@@ -92,16 +96,16 @@ const ExpensesPage = () => {
   // Filtering and sorting logic
   const filteredExpenses = useMemo(() => {
     let filtered = expenses.filter(expense => {
-    const matchesSearch = 
-      expense.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      expense.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      formatCurrency(expense.amount).includes(searchQuery) ||
-      formatDate(expense.date).toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesCategory = categoryFilter ? expense.category === categoryFilter : true;
-    
-    return matchesSearch && matchesCategory;
-  });
+      const matchesSearch =
+        expense.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        expense.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        formatCurrency(expense.amount).includes(searchQuery) ||
+        formatDate(expense.date).toLowerCase().includes(searchQuery.toLowerCase());
+
+      const matchesCategory = categoryFilter ? expense.category === categoryFilter : true;
+
+      return matchesSearch && matchesCategory;
+    });
 
     const today = new Date();
     const startOfWeekDate = startOfWeek(today, { weekStartsOn: 0 });
@@ -118,23 +122,23 @@ const ExpensesPage = () => {
 
   const sortedExpenses = [...filteredExpenses].sort((a, b) => {
     if (!sortConfig) return 0;
-    
+
     const { key, direction } = sortConfig;
-    
+
     if (key === 'date') {
-      return direction === 'asc' 
+      return direction === 'asc'
         ? new Date(a[key]).getTime() - new Date(b[key]).getTime()
         : new Date(b[key]).getTime() - new Date(a[key]).getTime();
     }
-    
+
     if (key === 'amount') {
       return direction === 'asc' ? a[key] - b[key] : b[key] - a[key];
     }
-    
+
     // Handle string comparison (category, description)
     const aValue = (a[key] || '').toString();
     const bValue = (b[key] || '').toString();
-    return direction === 'asc' 
+    return direction === 'asc'
       ? aValue.localeCompare(bValue)
       : bValue.localeCompare(aValue);
   });
@@ -162,8 +166,8 @@ const ExpensesPage = () => {
 
   // Update unique categories for filtering dropdown based on fetched expense categories
   const uniqueCategoriesForFilter = useMemo(() =>
-      [...new Set(expenseCategories.map(cat => cat.name))]
-  , [expenseCategories]);
+    [...new Set(expenseCategories.map((cat: Category) => cat.name))]
+    , [expenseCategories]);
 
   // Add a function to open the edit dialog
   const openEditDialog = (expense: Expense) => {
@@ -178,9 +182,9 @@ const ExpensesPage = () => {
   // Add a function to handle the edit submission
   const handleEditExpense = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!editingExpense || !editCategory) return;
-    
+
     // Validate the amount
     const amountNum = parseFloat(editAmount);
     if (isNaN(amountNum) || amountNum <= 0) {
@@ -191,7 +195,7 @@ const ExpensesPage = () => {
       });
       return;
     }
-    
+
     updateExpenseMutation.mutate({
       id: editingExpense.id,
       updates: {
@@ -226,7 +230,7 @@ const ExpensesPage = () => {
 
   const handleDelete = async () => {
     if (!expenseToDelete) return;
-    
+
     deleteExpenseMutation.mutate(expenseToDelete, {
       onSuccess: () => {
         toast({
@@ -252,13 +256,13 @@ const ExpensesPage = () => {
     e.preventDefault();
     // Basic validation
     if (!amount || !date || !category || !user) {
-       toast({ title: "Missing Fields", description: "Amount, Date, and Category are required.", variant: "destructive" });
-       return;
+      toast({ title: "Missing Fields", description: "Amount, Date, and Category are required.", variant: "destructive" });
+      return;
     }
     const amountNum = parseFloat(amount);
     if (isNaN(amountNum) || amountNum <= 0) {
-       toast({ title: "Invalid Amount", description: "Please enter a valid positive amount.", variant: "destructive" });
-       return;
+      toast({ title: "Invalid Amount", description: "Please enter a valid positive amount.", variant: "destructive" });
+      return;
     }
 
     if (isRecurring) {
@@ -305,9 +309,9 @@ const ExpensesPage = () => {
               setAmount(''); setDate(new Date()); setCategory(''); setDescription(''); setIsRecurring(false); setFrequency('monthly'); setCreateInitialTransaction(true);
             }
           });
-          } else {
-           // Reset form if only rule was created
-           setAmount(''); setDate(new Date()); setCategory(''); setDescription(''); setIsRecurring(false); setFrequency('monthly'); setCreateInitialTransaction(true);
+        } else {
+          // Reset form if only rule was created
+          setAmount(''); setDate(new Date()); setCategory(''); setDescription(''); setIsRecurring(false); setFrequency('monthly'); setCreateInitialTransaction(true);
         }
 
       } catch (error: any) {
@@ -347,28 +351,7 @@ const ExpensesPage = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-8">
-        {/* Page header */}
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Expenses</h1>
-          <p className="text-muted-foreground">Track and manage your expenses</p>
-        </div>
-
-        {/* === Onboarding Alert === */}
-        {!isLoadingCategories && expenseCategories.length === 0 && (
-          <Alert variant="default" className="bg-blue-50 border border-blue-200 text-blue-800">
-            <SettingsIcon className="h-4 w-4 !text-blue-600" />
-            <AlertTitle className="text-blue-900 font-semibold">Set Up Your Expense Categories!</AlertTitle>
-            <AlertDescription>
-              You haven't added any expense categories yet. Go to{' '}
-              <Link to="/settings" className="font-medium underline hover:text-blue-900">
-                Settings &gt; Categories
-              </Link>
-              {' '}to create categories like "Rent", "Food", etc., before adding expenses.
-            </AlertDescription>
-          </Alert>
-        )}
-        {/* === End Onboarding Alert === */}
+      <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Add Expense Form */}
@@ -381,6 +364,42 @@ const ExpensesPage = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Quick Suggestions */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Quick Suggestions</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: 'Rent', category: 'Housing', icon: '🏠', color: 'text-blue-500 bg-blue-500/10 hover:bg-blue-500/20 border-blue-200' },
+                      { label: 'Groceries', category: 'Food & Dining', icon: '🛒', color: 'text-green-500 bg-green-500/10 hover:bg-green-500/20 border-green-200' },
+                      { label: 'Dining Out', category: 'Food & Dining', icon: '🍽️', color: 'text-orange-500 bg-orange-500/10 hover:bg-orange-500/20 border-orange-200' },
+                      { label: 'Internet', category: 'Bills & Utilities', icon: '🌐', color: 'text-indigo-500 bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-200' },
+                      { label: 'Electricity', category: 'Bills & Utilities', icon: '⚡', color: 'text-yellow-600 bg-yellow-500/10 hover:bg-yellow-500/20 border-yellow-200' },
+                      { label: 'Gasoline', category: 'Auto & Transport', icon: '⛽', color: 'text-red-500 bg-red-500/10 hover:bg-red-500/20 border-red-200' },
+                    ].map((suggestion) => (
+                      <Button
+                        key={suggestion.label}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className={cn("h-7 text-xs px-2.5 py-0.5 rounded-full transition-colors border", suggestion.color)}
+                        onClick={() => {
+                          setDescription(suggestion.label);
+                          // Try to find the category in the user's categories
+                          const foundCat = expenseCategories.find(c =>
+                            c.name.toLowerCase() === suggestion.category.toLowerCase() ||
+                            c.name.toLowerCase().includes(suggestion.label.toLowerCase())
+                          );
+                          if (foundCat) {
+                            setCategory(foundCat.name);
+                          }
+                        }}
+                      >
+                        <span className="mr-1.5">{suggestion.icon}</span>
+                        {suggestion.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="amount">Amount</Label>
                   <Input
@@ -401,8 +420,8 @@ const ExpensesPage = () => {
                     <SelectTrigger id="category">
                       <SelectValue placeholder={
                         isLoadingCategories ? "Loading..." :
-                        expenseCategories.length === 0 ? "Add categories in Settings" :
-                        "Select category"
+                          expenseCategories.length === 0 ? "Add categories in Settings" :
+                            "Select category"
                       } />
                     </SelectTrigger>
                     <SelectContent>
@@ -410,7 +429,7 @@ const ExpensesPage = () => {
                         expenseCategories.map((cat) => (
                           <SelectItem key={cat.id} value={cat.name}>
                             {cat.name}
-                        </SelectItem>
+                          </SelectItem>
                         ))
                       )}
                     </SelectContent>
@@ -462,9 +481,9 @@ const ExpensesPage = () => {
                       id="recurring-expense"
                       checked={isRecurring}
                       onCheckedChange={(checked) => {
-                          setIsRecurring(checked === true);
-                          // Reset createInitialTransaction when unchecking recurring
-                          if (checked !== true) setCreateInitialTransaction(true);
+                        setIsRecurring(checked === true);
+                        // Reset createInitialTransaction when unchecking recurring
+                        if (checked !== true) setCreateInitialTransaction(true);
                       }}
                       disabled={expenseCategories.length === 0} // Disable if no categories
                     />
@@ -475,29 +494,29 @@ const ExpensesPage = () => {
                     <div className="space-y-4 pl-6 pt-2">
                       {/* Frequency Select */}
                       <div>
-                          <Label htmlFor="frequency-expense">Frequency</Label>
-                          <Select value={frequency} onValueChange={(v: any) => setFrequency(v)} required={isRecurring}>
-                            <SelectTrigger id="frequency-expense">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="weekly">Weekly</SelectItem>
-                              <SelectItem value="monthly">Monthly</SelectItem>
-                              <SelectItem value="yearly">Yearly</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Starts on the selected date ({format(date, "PPP")}).
-                          </p>
+                        <Label htmlFor="frequency-expense">Frequency</Label>
+                        <Select value={frequency} onValueChange={(v: any) => setFrequency(v)} required={isRecurring}>
+                          <SelectTrigger id="frequency-expense">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="weekly">Weekly</SelectItem>
+                            <SelectItem value="monthly">Monthly</SelectItem>
+                            <SelectItem value="yearly">Yearly</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Starts on the selected date ({format(date, "PPP")}).
+                        </p>
                       </div>
                       {/* New Checkbox for Initial Transaction */}
                       <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="create-initial-expense"
-                            checked={createInitialTransaction}
-                            onCheckedChange={(checked) => setCreateInitialTransaction(checked === true)}
-                          />
-                          <Label htmlFor="create-initial-expense" className="text-sm font-normal">Add first transaction now?</Label>
+                        <Checkbox
+                          id="create-initial-expense"
+                          checked={createInitialTransaction}
+                          onCheckedChange={(checked) => setCreateInitialTransaction(checked === true)}
+                        />
+                        <Label htmlFor="create-initial-expense" className="text-sm font-normal">Add first transaction now?</Label>
                       </div>
                     </div>
                   )}
@@ -519,179 +538,241 @@ const ExpensesPage = () => {
           </Card>
 
           {/* Expenses List */}
-          <Card className="lg:col-span-2 shadow-sm">
-            <CardHeader>
-              <div className="flex flex-col space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div>
-                    <CardTitle>Expense History</CardTitle>
-                    <CardDescription>
-                      Total: {formatCurrency(totalExpenses)}
-                    </CardDescription>
-                  </div>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search expenses..."
-                      className="pl-10 w-full sm:w-[250px]"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                  </div>
+          <div className="lg:col-span-2 space-y-6">
+            {/* Summary Card */}
+            {/* Summary Card */}
+            <Card className="shadow-sm border-red-500/20 bg-red-500/5">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Expenses</CardTitle>
+                <TrendingDown className="h-4 w-4 text-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-foreground flex items-center">
+                  <Receipt className="mr-2 h-5 w-5 opacity-75" />
+                  {formatCurrency(totalExpenses)}
                 </div>
-                
-                {/* Category filter */}
-                <div className="flex items-center">
-                  <Filter className="mr-2 h-4 w-4 text-muted-foreground" />
-                  <Select value={categoryFilter} onValueChange={setCategoryFilter} disabled={isLoadingCategories}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="All Categories" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Categories</SelectItem>
-                      {uniqueCategoriesForFilter.map((catName) => (
-                        <SelectItem key={catName} value={catName || "uncategorized"}>
-                          {catName || "Uncategorized"}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              {/* +++ ADDED: Timeframe filter buttons +++ */}
-              <div className="flex space-x-2 mt-4">
-                <Button
-                  variant={localTimeframe === 'week' ? 'default' : 'outline'}
-                  onClick={() => setLocalTimeframe('week')}
-                  size="sm"
-                >
-                  This Week
-                </Button>
-                <Button
-                  variant={localTimeframe === 'month' ? 'default' : 'outline'}
-                  onClick={() => setLocalTimeframe('month')}
-                  size="sm"
-                >
-                  This Month
-                </Button>
-                <Button
-                  variant={localTimeframe === 'all' ? 'default' : 'outline'}
-                  onClick={() => setLocalTimeframe('all')}
-                  size="sm"
-                >
-                  All Time
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {isExpensesLoading ? (
-                <div className="space-y-4 animate-pulse">
-                  {[...Array(5)].map((_, i) => (
-                    <div key={i} className="flex justify-between p-2">
-                      <div className="h-6 w-24 bg-muted rounded"></div>
-                      <div className="h-6 w-20 bg-muted rounded"></div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {localTimeframe === 'all' ? 'All time' : localTimeframe === 'month' ? 'This month' : 'This week'}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm">
+              <CardHeader>
+                <div className="flex flex-col space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <CardTitle>Expense History</CardTitle>
+                      <CardDescription>
+                        Recent transactions
+                      </CardDescription>
                     </div>
-                  ))}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search expenses..."
+                        className="pl-10 w-full sm:w-[250px]"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Category filter */}
+                  <div className="flex items-center">
+                    <Filter className="mr-2 h-4 w-4 text-muted-foreground" />
+                    <Select value={categoryFilter} onValueChange={setCategoryFilter} disabled={isLoadingCategories}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="All Categories" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Categories</SelectItem>
+                        {uniqueCategoriesForFilter.map((catName) => (
+                          <SelectItem key={catName} value={catName || "uncategorized"}>
+                            {catName || "Uncategorized"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-              ) : isExpensesError ? (
-                <div className="text-center py-12 text-destructive">
-                  <p>Error loading expenses: {expensesError?.message || 'Unknown error'}</p>
+                {/* +++ ADDED: Timeframe filter buttons +++ */}
+                <div className="flex space-x-2 mt-4">
+                  <Button
+                    variant={localTimeframe === 'week' ? 'default' : 'outline'}
+                    onClick={() => setLocalTimeframe('week')}
+                    size="sm"
+                  >
+                    This Week
+                  </Button>
+                  <Button
+                    variant={localTimeframe === 'month' ? 'default' : 'outline'}
+                    onClick={() => setLocalTimeframe('month')}
+                    size="sm"
+                  >
+                    This Month
+                  </Button>
+                  <Button
+                    variant={localTimeframe === 'all' ? 'default' : 'outline'}
+                    onClick={() => setLocalTimeframe('all')}
+                    size="sm"
+                  >
+                    All Time
+                  </Button>
                 </div>
-              ) : sortedExpenses.length > 0 ? (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead 
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => requestSort('date')}
-                        >
-                          <div className="flex items-center space-x-1">
-                            <span>Date</span>
-                            <ArrowUpDown className="h-3 w-3" />
-                          </div>
-                        </TableHead>
-                        <TableHead 
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => requestSort('amount')}
-                        >
-                          <div className="flex items-center space-x-1">
-                            <span>Amount</span>
-                            <ArrowUpDown className="h-3 w-3" />
-                          </div>
-                        </TableHead>
-                        <TableHead 
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => requestSort('category')}
-                        >
-                          <div className="flex items-center space-x-1">
-                            <span>Category</span>
-                            <ArrowUpDown className="h-3 w-3" />
-                          </div>
-                        </TableHead>
-                        <TableHead 
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => requestSort('description')}
-                        >
-                          <div className="flex items-center space-x-1">
-                            <span>Description</span>
-                            <ArrowUpDown className="h-3 w-3" />
-                          </div>
-                        </TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
+              </CardHeader>
+              <CardContent>
+                {isExpensesLoading ? (
+                  <div className="space-y-4 animate-pulse">
+                    {[...Array(5)].map((_, i) => (
+                      <div key={i} className="flex justify-between p-2">
+                        <div className="h-6 w-24 bg-muted rounded"></div>
+                        <div className="h-6 w-20 bg-muted rounded"></div>
+                      </div>
+                    ))}
+                  </div>
+                ) : isExpensesError ? (
+                  <div className="text-center py-12 text-destructive">
+                    <p>Error loading expenses: {expensesError?.message || 'Unknown error'}</p>
+                  </div>
+                ) : sortedExpenses.length > 0 ? (
+                  <div className="rounded-md border">
+                    {/* Desktop Table View */}
+                    <div className="hidden md:block">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead
+                              className="cursor-pointer hover:bg-muted/50"
+                              onClick={() => requestSort('date')}
+                            >
+                              <div className="flex items-center space-x-1">
+                                <span>Date</span>
+                                <ArrowUpDown className="h-3 w-3" />
+                              </div>
+                            </TableHead>
+                            <TableHead
+                              className="cursor-pointer hover:bg-muted/50"
+                              onClick={() => requestSort('amount')}
+                            >
+                              <div className="flex items-center space-x-1">
+                                <span>Amount</span>
+                                <ArrowUpDown className="h-3 w-3" />
+                              </div>
+                            </TableHead>
+                            <TableHead
+                              className="cursor-pointer hover:bg-muted/50"
+                              onClick={() => requestSort('category')}
+                            >
+                              <div className="flex items-center space-x-1">
+                                <span>Category</span>
+                                <ArrowUpDown className="h-3 w-3" />
+                              </div>
+                            </TableHead>
+                            <TableHead
+                              className="cursor-pointer hover:bg-muted/50"
+                              onClick={() => requestSort('description')}
+                            >
+                              <div className="flex items-center space-x-1">
+                                <span>Description</span>
+                                <ArrowUpDown className="h-3 w-3" />
+                              </div>
+                            </TableHead>
+                            <TableHead>Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sortedExpenses.map((expense) => (
+                            <TableRow key={expense.id} className="group hover:bg-transparent data-[state=selected]:bg-transparent">
+                              <TableCell className="font-medium">{formatDate(expense.date)}</TableCell>
+                              <TableCell className="text-expense font-bold">{formatCurrency(expense.amount)}</TableCell>
+                              <TableCell>
+                                <span className="inline-block px-2 py-1 rounded-full bg-muted text-xs font-medium">
+                                  {expense.category}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-muted-foreground max-w-[200px] truncate">
+                                {expense.description || "-"}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex items-center justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => openEditDialog(expense)}
+                                    className="h-8 w-8 hover:text-primary hover:bg-primary/10"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                    <span className="sr-only">Edit</span>
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => confirmDelete(expense.id)}
+                                    className="h-8 w-8 hover:text-destructive hover:bg-destructive/10"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                    <span className="sr-only">Delete</span>
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {/* Mobile Card View */}
+                    <div className="md:hidden divide-y">
                       {sortedExpenses.map((expense) => (
-                        <TableRow key={expense.id}>
-                          <TableCell className="font-medium">{formatDate(expense.date)}</TableCell>
-                          <TableCell className="text-expense">{formatCurrency(expense.amount)}</TableCell>
-                          <TableCell>
-                            <span className="inline-block px-2 py-1 rounded-full bg-muted text-xs font-medium">
-                              {expense.category}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {expense.description || "-"}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex space-x-1">
-                              <Button 
-                                variant="ghost" 
-                                size="icon"
-                                onClick={() => openEditDialog(expense)}
-                                className="text-muted-foreground hover:text-primary"
-                                title="Edit"
-                                disabled={updateExpenseMutation.isLoading || deleteExpenseMutation.isLoading}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="icon"
-                                onClick={() => confirmDelete(expense.id)}
-                                className="text-muted-foreground hover:text-destructive"
-                                title="Delete"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                        <div key={expense.id} className="p-4 flex flex-col gap-3">
+                          <div className="flex justify-between items-start">
+                            <div className="flex flex-col">
+                              <span className="font-bold text-base">{expense.category}</span>
+                              <span className="text-sm text-muted-foreground">{formatDate(expense.date)}</span>
                             </div>
-                          </TableCell>
-                        </TableRow>
+                            <span className="font-black text-red-500 text-lg">{formatCurrency(expense.amount)}</span>
+                          </div>
+                          {expense.description && (
+                            <div className="text-sm text-muted-foreground bg-muted/30 p-2 rounded-md">
+                              {expense.description}
+                            </div>
+                          )}
+                          <div className="flex justify-end gap-2 mt-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openEditDialog(expense)}
+                              className="h-8 text-xs"
+                              disabled={updateExpenseMutation.isLoading || deleteExpenseMutation.isLoading}
+                            >
+                              <Pencil className="h-3 w-3 mr-1" /> Edit
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => confirmDelete(expense.id)}
+                              className="h-8 text-xs"
+                              disabled={updateExpenseMutation.isLoading || deleteExpenseMutation.isLoading}
+                            >
+                              <Trash2 className="h-3 w-3 mr-1" /> Delete
+                            </Button>
+                          </div>
+                        </div>
                       ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <p className="text-muted-foreground mb-6">No expense transactions yet</p>
-                  <p className="text-sm text-muted-foreground mb-4">Use the form to add your first expense entry</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <p className="text-muted-foreground mb-6">No expense transactions yet</p>
+                    <p className="text-sm text-muted-foreground mb-4">Use the form to add your first expense entry</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
-        
+
         {/* Category summary */}
         {Object.keys(expensesByCategory).length > 0 && !isExpensesLoading && (
           <Card className="shadow-sm">
@@ -728,15 +809,15 @@ const ExpensesPage = () => {
             </AlertDescription>
           </Alert>
           <DialogFooter>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => setDeleteDialogOpen(false)}
               disabled={deleteExpenseMutation.isLoading}
             >
               Cancel
             </Button>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
               onClick={handleDelete}
               disabled={deleteExpenseMutation.isLoading}
             >
@@ -762,7 +843,7 @@ const ExpensesPage = () => {
               Update expense transaction details.
             </DialogDescription>
           </DialogHeader>
-          
+
           <form onSubmit={(e) => { e.preventDefault(); handleEditExpense(e); }} className="space-y-4 py-2">
             <div className="space-y-2">
               <Label htmlFor="editAmount">Amount</Label>
@@ -777,7 +858,7 @@ const ExpensesPage = () => {
                 required
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="editCategory">Category</Label>
               <Select value={editCategory} onValueChange={setEditCategory} required>
@@ -791,13 +872,13 @@ const ExpensesPage = () => {
                     expenseCategories.map((cat) => (
                       <SelectItem key={`edit-${cat.id}`} value={cat.name}>
                         {cat.name}
-                    </SelectItem>
+                      </SelectItem>
                     ))
                   )}
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="editDate">Date</Label>
               <Popover>
@@ -825,7 +906,7 @@ const ExpensesPage = () => {
                 </PopoverContent>
               </Popover>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="editDescription">Description (Optional)</Label>
               <Textarea
@@ -835,17 +916,17 @@ const ExpensesPage = () => {
                 onChange={(e) => setEditDescription(e.target.value)}
               />
             </div>
-            
+
             <DialogFooter>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => setEditDialogOpen(false)}
                 type="button"
                 disabled={updateExpenseMutation.isLoading}
               >
                 Cancel
               </Button>
-              <Button 
+              <Button
                 type="submit"
                 disabled={updateExpenseMutation.isLoading}
               >

@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { SupabaseProvider } from "@/contexts/SupabaseContext";
 import { FinanceProvider } from "@/contexts/FinanceContext";
+import { CurrencyProvider } from "@/contexts/CurrencyContext";
 import { ThemeProvider } from "@/components/theme-provider";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
@@ -65,7 +66,7 @@ const App = () => {
   const handleJoyrideCallback = (data: any) => {
     const { status } = data;
 
-    if ([ 'finished', 'skipped' ].includes(status)) {
+    if (['finished', 'skipped'].includes(status)) {
       setRunTour(false);
     }
   };
@@ -75,27 +76,29 @@ const App = () => {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <SupabaseProvider>
-            <FinanceProvider>
-              <TooltipProvider>
-                <Toaster />
-                <Sonner />
-                <BrowserRouter>
-                  <Routes>
-                    <Route path="/" element={<Index />} />
-                    <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/income" element={<Income />} />
-                    <Route path="/expenses" element={<Expenses />} />
-                    <Route path="/savings" element={<Savings />} />
-                    <Route path="/reports" element={<Reports />} />
-                    <Route path="/settings" element={<Settings />} />
-                    <Route path="/budget" element={<Budget />} />
-                    <Route path="/recurring" element={<RecurringTransactionsPage />} />
-                    <Route path="/db-setup" element={<DbSetup />} />
-                    <Route path="*" element={<NotFound />} />
-                  </Routes>
-                </BrowserRouter>
-              </TooltipProvider>
-            </FinanceProvider>
+            <CurrencyProvider>
+              <FinanceProvider>
+                <TooltipProvider>
+                  <Toaster />
+                  <Sonner />
+                  <BrowserRouter>
+                    <Routes>
+                      <Route path="/" element={<Index />} />
+                      <Route path="/dashboard" element={<Dashboard />} />
+                      <Route path="/income" element={<Income />} />
+                      <Route path="/expenses" element={<Expenses />} />
+                      <Route path="/savings" element={<Savings />} />
+                      <Route path="/reports" element={<Reports />} />
+                      <Route path="/settings" element={<Settings />} />
+                      <Route path="/budget" element={<Budget />} />
+                      <Route path="/recurring" element={<RecurringTransactionsPage />} />
+                      <Route path="/db-setup" element={<DbSetup />} />
+                      <Route path="*" element={<NotFound />} />
+                    </Routes>
+                  </BrowserRouter>
+                </TooltipProvider>
+              </FinanceProvider>
+            </CurrencyProvider>
           </SupabaseProvider>
         </AuthProvider>
         <Joyride

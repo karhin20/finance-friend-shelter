@@ -16,10 +16,12 @@ import { useFinance } from '@/contexts/FinanceContext';
 import { Category } from '@/lib/supabase';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Link } from 'react-router-dom';
+import { useCurrency, CURRENCIES } from '@/contexts/CurrencyContext';
+import { Globe } from 'lucide-react';
 
 const SettingsPage = () => {
   const { user, signOut, deleteAccount } = useAuth();
-  const { categoriesQuery, addCategoryMutation, deleteCategoryMutation, updateCategoryMutation } = useFinance();
+  const { categoriesQuery, addCategoryMutation, addDefaultCategoriesMutation, deleteCategoryMutation, updateCategoryMutation } = useFinance();
   const { data: categories = [], isLoading: isLoadingCategories } = categoriesQuery;
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -38,6 +40,7 @@ const SettingsPage = () => {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [editCategoryName, setEditCategoryName] = useState('');
   const [editCategoryDialogOpen, setEditCategoryDialogOpen] = useState(false);
+  const { currency, setCurrency } = useCurrency();
 
   // Load user data
   useEffect(() => {
@@ -54,7 +57,7 @@ const SettingsPage = () => {
   const handleUpdateEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    
+
     // Simple email validation
     if (!email.includes('@')) {
       toast({
@@ -93,7 +96,7 @@ const SettingsPage = () => {
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    
+
     // Password validation
     if (newPassword.length < 6) {
       toast({
@@ -158,7 +161,7 @@ const SettingsPage = () => {
   // Handle account deletion
   const handleDeleteAccount = async () => {
     if (!user) return;
-    
+
     if (deleteConfirmText !== 'delete my account') {
       toast({
         title: 'Confirmation text does not match',
@@ -278,38 +281,34 @@ const SettingsPage = () => {
       }
     });
   };
-   // --- End Edit Handlers ---
+  // --- End Edit Handlers ---
 
   return (
     <DashboardLayout>
-      <div className="space-y-8">
-        {/* Page header */}
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-          <p className="text-muted-foreground">Manage your account and preferences</p>
-        </div>
+      <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
 
         {/* --- Link to Recurring Management --- */}
         <Card>
-            <CardHeader>
-                <CardTitle>Recurring Transactions</CardTitle>
-                <CardDescription>Manage your scheduled recurring income and expenses.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <Link to="/recurring">
-                    <Button variant="outline">
-                        <Repeat className="mr-2 h-4 w-4" />
-                        Manage Recurring Rules
-                    </Button>
-                </Link>
-            </CardContent>
+          <CardHeader>
+            <CardTitle>Recurring Transactions</CardTitle>
+            <CardDescription>Manage your scheduled recurring income and expenses.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link to="/recurring">
+              <Button variant="outline">
+                <Repeat className="mr-2 h-4 w-4" />
+                Manage Recurring Rules
+              </Button>
+            </Link>
+          </CardContent>
         </Card>
 
         {/* Settings Tabs - Set defaultValue and reorder TabsList */}
         <Tabs defaultValue="categories" className="w-full">
-          <TabsList className="mb-6 grid w-full grid-cols-3 md:grid-cols-5">
+          <TabsList className="mb-6 grid w-full grid-cols-3 md:grid-cols-6 h-auto">
             <TabsTrigger value="categories">Categories</TabsTrigger>
             <TabsTrigger value="account">Account</TabsTrigger>
+            <TabsTrigger value="preferences">Preferences</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
             <TabsTrigger value="danger">Danger Zone</TabsTrigger>
@@ -319,9 +318,11 @@ const SettingsPage = () => {
           <TabsContent value="categories" className="space-y-6">
             <Card className="shadow-sm">
               <CardHeader>
-                <div className="flex items-center gap-2">
-                  <Tag className="h-5 w-5 text-primary" />
-                  <CardTitle>Add New Category</CardTitle>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Tag className="h-5 w-5 text-primary" />
+                    <CardTitle>Add New Category</CardTitle>
+                  </div>
                 </div>
                 <CardDescription>
                   Add custom categories for income or expenses.
@@ -381,71 +382,71 @@ const SettingsPage = () => {
                   <CardDescription>Your custom income sources.</CardDescription>
                 </CardHeader>
                 <CardContent className="max-h-60 overflow-y-auto">
-                  {isLoadingCategories ? ( <p>Loading categories...</p> )
-                   : incomeCategories.length === 0 ? ( <p className="text-muted-foreground">No custom income categories added yet.</p> )
-                   : (
-                      <ul className="space-y-2">
+                  {isLoadingCategories ? (<p>Loading categories...</p>)
+                    : incomeCategories.length === 0 ? (<p className="text-muted-foreground">No custom income categories added yet.</p>)
+                      : (
+                        <ul className="space-y-2">
                           {incomeCategories.map(cat => (
-                              <li key={cat.id} className="flex justify-between items-center gap-2 text-sm p-2 border rounded-md hover:bg-muted/50">
-                                  <span className="flex-grow break-words pr-1">{cat.name}</span>
-                                  <div className="flex items-center flex-shrink-0">
-                                      <Button
-                                          variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary"
-                                          onClick={() => openEditCategoryDialog(cat)}
-                                          disabled={updateCategoryMutation.isLoading || deleteCategoryMutation.isLoading}
-                                          title="Edit Category"
-                                      > <Edit className="h-4 w-4" /> </Button >
-                                      <Button
-                                          variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                          onClick={() => openDeleteCategoryDialog(cat)}
-                                          disabled={updateCategoryMutation.isLoading || deleteCategoryMutation.isLoading}
-                                          title="Delete Category"
-                                      > <Trash2 className="h-4 w-4" /> </Button >
-                                  </div>
-                              </li>
+                            <li key={cat.id} className="flex justify-between items-center gap-2 text-sm p-2 border rounded-md hover:bg-muted/50">
+                              <span className="flex-grow break-words pr-1">{cat.name}</span>
+                              <div className="flex items-center flex-shrink-0">
+                                <Button
+                                  variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                  onClick={() => openEditCategoryDialog(cat)}
+                                  disabled={updateCategoryMutation.isLoading || deleteCategoryMutation.isLoading}
+                                  title="Edit Category"
+                                > <Edit className="h-4 w-4" /> </Button >
+                                <Button
+                                  variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                  onClick={() => openDeleteCategoryDialog(cat)}
+                                  disabled={updateCategoryMutation.isLoading || deleteCategoryMutation.isLoading}
+                                  title="Delete Category"
+                                > <Trash2 className="h-4 w-4" /> </Button >
+                              </div>
+                            </li>
                           ))}
-                      </ul>
-                  )}
+                        </ul>
+                      )}
                 </CardContent>
               </Card>
 
-               {/* Expense Categories */}
-               <Card className="shadow-sm">
-                   <CardHeader>
-                       <div className="flex items-center gap-2">
-                           <List className="h-5 w-5 text-expense" />
-                           <CardTitle>Expense Categories</CardTitle>
-                       </div>
-                       <CardDescription>Your custom spending types.</CardDescription>
-                   </CardHeader>
-                   <CardContent className="max-h-60 overflow-y-auto">
-                        {isLoadingCategories ? ( <p>Loading categories...</p> )
-                       : expenseCategories.length === 0 ? ( <p className="text-muted-foreground">No custom expense categories added yet.</p> )
-                       : (
-                          <ul className="space-y-2">
-                              {expenseCategories.map(cat => (
-                                   <li key={cat.id} className="flex justify-between items-center gap-2 text-sm p-2 border rounded-md hover:bg-muted/50">
-                                       <span className="flex-grow break-words pr-1">{cat.name}</span>
-                                       <div className="flex items-center flex-shrink-0">
-                                           <Button
-                                               variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary"
-                                               onClick={() => openEditCategoryDialog(cat)}
-                                               disabled={updateCategoryMutation.isLoading || deleteCategoryMutation.isLoading}
-                                               title="Edit Category"
-                                           > <Edit className="h-4 w-4" /> </Button >
-                                           <Button
-                                               variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                               onClick={() => openDeleteCategoryDialog(cat)}
-                                               disabled={updateCategoryMutation.isLoading || deleteCategoryMutation.isLoading}
-                                               title="Delete Category"
-                                           > <Trash2 className="h-4 w-4" /> </Button >
-                                       </div>
-                                   </li>
-                              ))}
-                          </ul>
-                       )}
-                   </CardContent>
-               </Card>
+              {/* Expense Categories */}
+              <Card className="shadow-sm">
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <List className="h-5 w-5 text-expense" />
+                    <CardTitle>Expense Categories</CardTitle>
+                  </div>
+                  <CardDescription>Your custom spending types.</CardDescription>
+                </CardHeader>
+                <CardContent className="max-h-60 overflow-y-auto">
+                  {isLoadingCategories ? (<p>Loading categories...</p>)
+                    : expenseCategories.length === 0 ? (<p className="text-muted-foreground">No custom expense categories added yet.</p>)
+                      : (
+                        <ul className="space-y-2">
+                          {expenseCategories.map(cat => (
+                            <li key={cat.id} className="flex justify-between items-center gap-2 text-sm p-2 border rounded-md hover:bg-muted/50">
+                              <span className="flex-grow break-words pr-1">{cat.name}</span>
+                              <div className="flex items-center flex-shrink-0">
+                                <Button
+                                  variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                  onClick={() => openEditCategoryDialog(cat)}
+                                  disabled={updateCategoryMutation.isLoading || deleteCategoryMutation.isLoading}
+                                  title="Edit Category"
+                                > <Edit className="h-4 w-4" /> </Button >
+                                <Button
+                                  variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                  onClick={() => openDeleteCategoryDialog(cat)}
+                                  disabled={updateCategoryMutation.isLoading || deleteCategoryMutation.isLoading}
+                                  title="Delete Category"
+                                > <Trash2 className="h-4 w-4" /> </Button >
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                </CardContent>
+              </Card>
             </div>
           </TabsContent>
           {/* === End Categories Settings Tab === */}
@@ -515,6 +516,44 @@ const SettingsPage = () => {
                   Export as JSON
                 </Button>
               </CardFooter>
+            </Card>
+          </TabsContent>
+
+          {/* Preferences Settings */}
+          <TabsContent value="preferences" className="space-y-6">
+            <Card className="shadow-sm">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Globe className="h-5 w-5 text-primary" />
+                  <CardTitle>Regional Settings</CardTitle>
+                </div>
+                <CardDescription>
+                  Customize your regional preferences
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="currency">Currency</Label>
+                  <Select value={currency.code} onValueChange={(code) => {
+                    const selected = CURRENCIES.find(c => c.code === code);
+                    if (selected) setCurrency(selected);
+                  }}>
+                    <SelectTrigger id="currency">
+                      <SelectValue placeholder="Select currency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CURRENCIES.map((c) => (
+                        <SelectItem key={c.code} value={c.code}>
+                          <span className="font-bold w-6 inline-block">{c.symbol}</span> {c.name} ({c.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-muted-foreground">
+                    This will update the currency symbol displayed across the application.
+                  </p>
+                </div>
+              </CardContent>
             </Card>
           </TabsContent>
 
@@ -703,15 +742,15 @@ const SettingsPage = () => {
                       </div>
                     </div>
                     <DialogFooter>
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         onClick={() => setShowDeleteDialog(false)}
                         disabled={isDeletingAccount}
                       >
                         Cancel
                       </Button>
-                      <Button 
-                        variant="destructive" 
+                      <Button
+                        variant="destructive"
                         onClick={handleDeleteAccount}
                         disabled={isDeletingAccount || deleteConfirmText !== 'delete my account'}
                       >

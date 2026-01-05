@@ -13,13 +13,15 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useFinance, RecurringTransaction } from '@/contexts/FinanceContext'; // Import interface
 import { useToast } from '@/hooks/use-toast';
 import { format, parseISO } from 'date-fns'; // Use parseISO for date strings
-import { formatCurrency, formatDate } from '@/lib/supabase'; // Use existing formatters
+import { formatDate } from '@/lib/supabase'; // Use existing formatters
+import { useCurrency } from '@/contexts/CurrencyContext';
 import { cn } from '@/lib/utils';
 import { CalendarIcon, Pencil, Trash2, Play, Pause, AlertCircle, Ban } from 'lucide-react';
 import { Badge } from '@/components/ui/badge'; // For status display
 
 const RecurringTransactionsPage = () => {
     const { toast } = useToast();
+    const { formatCurrency } = useCurrency();
     const {
         recurringTransactionsQuery,
         updateRecurringTransactionMutation,
@@ -80,8 +82,8 @@ const RecurringTransactionsPage = () => {
             return;
         }
         if (!editStartDate || !editNextDueDate) {
-             toast({ title: "Dates Required", description: "Start and Next Due Date are mandatory.", variant: "destructive" });
-             return;
+            toast({ title: "Dates Required", description: "Start and Next Due Date are mandatory.", variant: "destructive" });
+            return;
         }
 
 
@@ -144,11 +146,7 @@ const RecurringTransactionsPage = () => {
 
     return (
         <DashboardLayout>
-            <div className="space-y-8">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Manage Recurring Transactions</h1>
-                    <p className="text-muted-foreground">View, edit, pause, or delete your recurring income and expense rules.</p>
-                </div>
+            <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
 
                 <Card>
                     <CardHeader>
@@ -268,42 +266,42 @@ const RecurringTransactionsPage = () => {
                         </div>
                         {/* Start Date */}
                         <div className="grid grid-cols-4 items-center gap-4">
-                             <Label htmlFor="edit-start-date" className="text-right">Start Date</Label>
-                             <Popover>
+                            <Label htmlFor="edit-start-date" className="text-right">Start Date</Label>
+                            <Popover>
                                 <PopoverTrigger asChild>
                                     <Button variant="outline" id="edit-start-date" className={cn("col-span-3 justify-start text-left font-normal", !editStartDate && "text-muted-foreground")}>
                                         <CalendarIcon className="mr-2 h-4 w-4" /> {editStartDate ? format(editStartDate, "PPP") : <span>Pick start date</span>}
                                     </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={editStartDate} onSelect={setEditStartDate} initialFocus /></PopoverContent>
-                             </Popover>
+                            </Popover>
                         </div>
-                         {/* Next Due Date */}
+                        {/* Next Due Date */}
                         <div className="grid grid-cols-4 items-center gap-4">
-                             <Label htmlFor="edit-next-due-date" className="text-right">Next Due</Label>
-                             <Popover>
+                            <Label htmlFor="edit-next-due-date" className="text-right">Next Due</Label>
+                            <Popover>
                                 <PopoverTrigger asChild>
                                     <Button variant="outline" id="edit-next-due-date" className={cn("col-span-3 justify-start text-left font-normal", !editNextDueDate && "text-muted-foreground")}>
                                         <CalendarIcon className="mr-2 h-4 w-4" /> {editNextDueDate ? format(editNextDueDate, "PPP") : <span>Pick next due date</span>}
                                     </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={editNextDueDate} onSelect={setEditNextDueDate} initialFocus /></PopoverContent>
-                             </Popover>
+                            </Popover>
                         </div>
-                         {/* End Date */}
+                        {/* End Date */}
                         <div className="grid grid-cols-4 items-center gap-4">
-                             <Label htmlFor="edit-end-date" className="text-right">End Date</Label>
-                             <div className="col-span-3 flex items-center gap-2">
-                                 <Popover>
+                            <Label htmlFor="edit-end-date" className="text-right">End Date</Label>
+                            <div className="col-span-3 flex items-center gap-2">
+                                <Popover>
                                     <PopoverTrigger asChild>
                                         <Button variant="outline" id="edit-end-date" className={cn("flex-grow justify-start text-left font-normal", !editEndDate && "text-muted-foreground")}>
                                             <CalendarIcon className="mr-2 h-4 w-4" /> {editEndDate ? format(editEndDate, "PPP") : <span>No end date</span>}
                                         </Button>
                                     </PopoverTrigger>
                                     <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={editEndDate || undefined} onSelect={(d) => setEditEndDate(d || null)} /></PopoverContent>
-                                 </Popover>
-                                 {editEndDate && <Button variant="ghost" size="icon" onClick={() => setEditEndDate(null)} title="Clear end date"><Ban className="h-4 w-4"/></Button>}
-                             </div>
+                                </Popover>
+                                {editEndDate && <Button variant="ghost" size="icon" onClick={() => setEditEndDate(null)} title="Clear end date"><Ban className="h-4 w-4" /></Button>}
+                            </div>
                         </div>
                         {/* Description */}
                         <div className="grid grid-cols-4 items-center gap-4">
@@ -311,7 +309,7 @@ const RecurringTransactionsPage = () => {
                             <Textarea id="edit-description" value={editDescription} onChange={e => setEditDescription(e.target.value)} className="col-span-3" placeholder="Optional description" />
                         </div>
                         {/* Status (Is Active) - Can be toggled from main table, maybe not needed here? Or keep for completeness */}
-                         <div className="grid grid-cols-4 items-center gap-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="edit-is_active" className="text-right">Status</Label>
                             <Select value={editIsActive ? "active" : "paused"} onValueChange={(v) => setEditIsActive(v === "active")} >
                                 <SelectTrigger id="edit-is_active" className="col-span-3"> <SelectValue /> </SelectTrigger>
