@@ -93,6 +93,12 @@ const ExpensesPage = () => {
   // +++ ADDED: Local state for timeframe filtering +++
   const [localTimeframe, setLocalTimeframe] = useState<'week' | 'month' | 'all'>('all');
 
+  // Mobile Card View Toggle State
+  const [activeMobileItem, setActiveMobileItem] = useState<string | null>(null);
+  const toggleMobileItem = (id: string) => {
+    setActiveMobileItem(prev => prev === id ? null : id);
+  };
+
   // Filtering and sorting logic
   const filteredExpenses = useMemo(() => {
     let filtered = expenses.filter(expense => {
@@ -725,7 +731,11 @@ const ExpensesPage = () => {
                     {/* Mobile Card View */}
                     <div className="md:hidden divide-y">
                       {sortedExpenses.map((expense) => (
-                        <div key={expense.id} className="p-4 flex flex-col gap-3">
+                        <div
+                          key={expense.id}
+                          className="p-4 flex flex-col gap-3 active:bg-muted/20 transition-colors cursor-pointer"
+                          onClick={() => toggleMobileItem(expense.id)}
+                        >
                           <div className="flex justify-between items-start">
                             <div className="flex flex-col">
                               <span className="font-bold text-base">{expense.category}</span>
@@ -738,11 +748,19 @@ const ExpensesPage = () => {
                               {expense.description}
                             </div>
                           )}
-                          <div className="flex justify-end gap-2 mt-1">
+
+                          {/* Action Buttons - Only visible when active */}
+                          <div className={cn(
+                            "flex justify-end gap-2 mt-1 overflow-hidden transition-all duration-300 ease-in-out",
+                            activeMobileItem === expense.id ? "max-h-12 opacity-100" : "max-h-0 opacity-0"
+                          )}>
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => openEditDialog(expense)}
+                              onClick={(e) => {
+                                e.stopPropagation(); // Prevent toggling when clicking button
+                                openEditDialog(expense);
+                              }}
                               className="h-8 text-xs"
                               disabled={updateExpenseMutation.isLoading || deleteExpenseMutation.isLoading}
                             >
@@ -751,7 +769,10 @@ const ExpensesPage = () => {
                             <Button
                               variant="destructive"
                               size="sm"
-                              onClick={() => confirmDelete(expense.id)}
+                              onClick={(e) => {
+                                e.stopPropagation(); // Prevent toggling when clicking button
+                                confirmDelete(expense.id);
+                              }}
                               className="h-8 text-xs"
                               disabled={updateExpenseMutation.isLoading || deleteExpenseMutation.isLoading}
                             >
@@ -940,4 +961,6 @@ const ExpensesPage = () => {
   );
 };
 
+
 export default ExpensesPage;
+// Re-export to trigger HMR update

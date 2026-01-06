@@ -89,6 +89,12 @@ const IncomePage = () => {
   // +++ ADDED: Local state for timeframe filtering +++
   const [localTimeframe, setLocalTimeframe] = useState<'week' | 'month' | 'all'>('all');
 
+  // Mobile Card View Toggle State
+  const [activeMobileItem, setActiveMobileItem] = useState<string | null>(null);
+  const toggleMobileItem = (id: string) => {
+    setActiveMobileItem(prev => prev === id ? null : id);
+  };
+
   // Filtering and sorting logic
   const filteredIncome = useMemo(() => {
     let filtered = income.filter(item =>
@@ -686,7 +692,11 @@ const IncomePage = () => {
                     {/* Mobile Card View */}
                     <div className="md:hidden divide-y">
                       {sortedIncome.map((item) => (
-                        <div key={item.id} className="p-4 flex flex-col gap-3">
+                        <div
+                          key={item.id}
+                          className="p-4 flex flex-col gap-3 active:bg-muted/20 transition-colors cursor-pointer"
+                          onClick={() => toggleMobileItem(item.id)}
+                        >
                           <div className="flex justify-between items-start">
                             <div className="flex flex-col">
                               <span className="font-bold text-base">{item.category || "Uncategorized"}</span>
@@ -699,11 +709,19 @@ const IncomePage = () => {
                               {item.description}
                             </div>
                           )}
-                          <div className="flex justify-end gap-2 mt-1">
+
+                          {/* Action Buttons - Only visible when active */}
+                          <div className={cn(
+                            "flex justify-end gap-2 mt-1 overflow-hidden transition-all duration-300 ease-in-out",
+                            activeMobileItem === item.id ? "max-h-12 opacity-100" : "max-h-0 opacity-0"
+                          )}>
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => openEditDialog(item)}
+                              onClick={(e) => {
+                                e.stopPropagation(); // Prevent toggling when clicking button
+                                openEditDialog(item);
+                              }}
                               className="h-8 text-xs"
                               disabled={updateIncomeMutation.isLoading || deleteIncomeMutation.isLoading}
                             >
@@ -712,7 +730,10 @@ const IncomePage = () => {
                             <Button
                               variant="destructive"
                               size="sm"
-                              onClick={() => confirmDelete(item.id)}
+                              onClick={(e) => {
+                                e.stopPropagation(); // Prevent toggling when clicking button
+                                confirmDelete(item.id);
+                              }}
                               className="h-8 text-xs"
                               disabled={updateIncomeMutation.isLoading || deleteIncomeMutation.isLoading}
                             >
