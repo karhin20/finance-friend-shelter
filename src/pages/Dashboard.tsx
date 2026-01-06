@@ -736,7 +736,7 @@ const Dashboard = () => {
             </div>
             <div className="relative z-10">
               <p className="text-xs font-bold uppercase tracking-[0.2em] opacity-70 mb-2">Analysis Result</p>
-              <h2 className="text-4xl font-black tracking-tighter mb-1">Financial Health</h2>
+              <DialogTitle className="text-4xl font-black tracking-tighter mb-1">Financial Health</DialogTitle>
               <p className="text-lg font-bold opacity-90">Score: {financialHealth ? financialHealth.score : 0}/100</p>
             </div>
           </div>
