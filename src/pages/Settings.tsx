@@ -228,10 +228,8 @@ const SettingsPage = () => {
 
   // --- Handlers for Deleting Category ---
   const openDeleteCategoryDialog = (category: Category) => {
-    console.log('openDeleteCategoryDialog called with:', category);
     setCategoryToDelete(category);
     setDeleteCategoryDialogOpen(true);
-    console.log('State set - categoryToDelete:', category, 'deleteCategoryDialogOpen:', true);
   };
 
   const handleDeleteCategory = () => {

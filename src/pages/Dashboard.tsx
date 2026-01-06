@@ -4,6 +4,13 @@ import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { FloatingActionButton } from '@/components/FloatingActionButton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useFinance, RecurringTransaction } from '@/contexts/FinanceContext';
 import { Income, Expense, formatDate } from '@/lib/supabase';
@@ -433,14 +440,17 @@ const Dashboard = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" className="h-12 w-12 rounded-2xl border-none bg-muted/30" onClick={() => navigate('/settings')}>
+            <Button variant="outline" size="icon" className="hidden md:flex h-12 w-12 rounded-2xl border-none bg-muted/30" onClick={() => navigate('/settings')}>
               <User2 className="h-5 w-5" />
             </Button>
-            <Button variant="outline" size="icon" className="h-12 w-12 rounded-2xl border-none bg-muted/30" onClick={() => navigate('/reports')}>
+            <Button variant="outline" size="icon" className="hidden md:flex h-12 w-12 rounded-2xl border-none bg-muted/30" onClick={() => navigate('/reports')}>
               <BarChart3 className="h-5 w-5" />
             </Button>
           </div>
         </div>
+
+        {/* Mobile FAB */}
+        <FloatingActionButton />
 
         {/* === Onboarding Alert === */}
         {!isLoading && filteredIncome.length === 0 && filteredExpenses.length === 0 && (
@@ -503,36 +513,39 @@ const Dashboard = () => {
             </div>
           </div>
 
-          <div className="md:col-span-12 lg:col-span-4 grid grid-cols-1 gap-4 h-full">
-            <Card className="rounded-[2.5rem] bg-card border border-border/40 p-6 flex flex-col justify-center shadow-premium h-full min-h-[220px]">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="h-14 w-14 rounded-3xl bg-secondary flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
-                  <Clock className="h-7 w-7" />
+          <div className="md:col-span-12 lg:col-span-4 flex flex-col gap-4 h-full">
+            {/* === Daily Spend Card === */}
+            <div className="clean-card p-5 flex flex-row md:flex-col justify-between items-center md:items-start gap-4 md:gap-2 relative overflow-hidden group flex-1">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
+
+              <div className="flex items-center gap-3 z-10">
+                <div className="h-10 w-10 md:h-12 md:w-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                  <TrendingUp className="h-5 w-5 md:h-6 md:w-6" />
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Daily Spend Avg</p>
-                  <p className="text-2xl font-black tracking-tight text-foreground">
+                  <p className="text-xs md:text-sm text-muted-foreground font-medium">Daily Average</p>
+                  <h3 className="text-lg md:text-2xl font-black font-display tracking-tight text-foreground">
                     {formatCurrency(averageDailyExpenses)}
-                  </p>
+                  </h3>
                 </div>
               </div>
-              <div className="mt-auto flex flex-col gap-3 pt-6 min-h-[100px] justify-end">
-                <div className="h-10 rounded-xl bg-secondary/50 flex items-center justify-between px-4 mb-2">
-                  <span className="text-xs font-bold text-muted-foreground">Safe Limit</span>
-                  <span className={cn("text-xs font-black uppercase tracking-widest",
+
+              <div className="flex flex-col items-end md:items-start z-10 gap-1">
+                <div className="flex items-center gap-1.5 bg-background/50 px-2 py-1 rounded-lg backdrop-blur-sm">
+                  <span className={cn("text-[10px] md:text-base font-black uppercase tracking-widest",
                     averageDailyExpenses > (totalIncome / 30) ? "text-red-500" : "text-green-500"
                   )}>
-                    {averageDailyExpenses > (totalIncome / 30) ? 'Exceeded' : 'Within Range'}
+                    {averageDailyExpenses > (totalIncome / 30) ? 'High' : 'Good'}
                   </span>
                 </div>
-                <div className="flex justify-between items-center px-2 text-[10px] text-muted-foreground font-medium">
-                  <span>Target: {formatCurrency(totalIncome / 30)}/day</span>
-                </div>
-                <Button onClick={() => setOpen(true)} variant="outline" className="w-full rounded-2xl h-12 font-bold border-2 border-primary/10 hover:bg-primary/5 hover:border-primary/20 transition-all">
-                  Check Health Score
-                </Button>
+                <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-bold hidden md:inline-block">
+                  Target: {formatCurrency(totalIncome / 30)}/day
+                </span>
               </div>
-            </Card>
+            </div>
+            <Button onClick={() => setOpen(true)} variant="outline" className="w-full rounded-2xl h-12 font-bold border-2 border-primary/10 hover:bg-primary/5 hover:border-primary/20 transition-all">
+              Check Health Score
+            </Button>
           </div>
         </div>
 
@@ -551,7 +564,7 @@ const Dashboard = () => {
 
 
         {/* === Quick Action Toolbar === */}
-        <div className="flex flex-wrap items-center gap-4 bg-white/50 dark:bg-card/50 p-2 rounded-[2rem] border border-border/40 backdrop-blur-sm">
+        <div className="hidden md:flex flex-wrap items-center gap-4 bg-white/50 dark:bg-card/50 p-2 rounded-[2rem] border border-border/40 backdrop-blur-sm">
           <Button onClick={() => navigate('/income')} className="flex-1 min-w-[140px] h-14 rounded-[1.5rem] font-black text-sm uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-[1.02] transition-all">
             <DollarSign className="mr-2 h-5 w-5" strokeWidth={2.5} /> Add Income
           </Button>

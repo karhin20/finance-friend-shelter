@@ -22,6 +22,7 @@ import NotFound from "./pages/NotFound";
 import RecurringTransactionsPage from "./pages/RecurringTransactions";
 import Joyride, { Step } from 'react-joyride';
 import React, { useState, useEffect } from 'react';
+import ProtectedRoute from "./components/ProtectedRoute";
 
 const queryClient = new QueryClient();
 
@@ -86,15 +87,20 @@ const App = () => {
                     <Routes>
                       <Route path="/" element={<Index />} />
                       <Route path="/reset-password" element={<ResetPassword />} />
-                      <Route path="/dashboard" element={<Dashboard />} />
-                      <Route path="/income" element={<Income />} />
-                      <Route path="/expenses" element={<Expenses />} />
-                      <Route path="/savings" element={<Savings />} />
-                      <Route path="/reports" element={<Reports />} />
-                      <Route path="/settings" element={<Settings />} />
-                      <Route path="/budget" element={<Budget />} />
-                      <Route path="/recurring" element={<RecurringTransactionsPage />} />
                       <Route path="/db-setup" element={<DbSetup />} />
+
+                      {/* Protected Routes */}
+                      <Route element={<ProtectedRoute />}>
+                        <Route path="/dashboard" element={<Dashboard />} />
+                        <Route path="/income" element={<Income />} />
+                        <Route path="/expenses" element={<Expenses />} />
+                        <Route path="/savings" element={<Savings />} />
+                        <Route path="/reports" element={<Reports />} />
+                        <Route path="/settings" element={<Settings />} />
+                        <Route path="/budget" element={<Budget />} />
+                        <Route path="/recurring" element={<RecurringTransactionsPage />} />
+                      </Route>
+
                       <Route path="*" element={<NotFound />} />
                     </Routes>
                   </BrowserRouter>

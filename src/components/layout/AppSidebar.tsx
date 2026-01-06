@@ -37,7 +37,7 @@ import { cn } from "@/lib/utils"
 
 const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
-    { icon: Wallet, label: 'Income', path: '/income' },
+    { icon: (props: any) => <Wallet {...props} strokeWidth={2.5} />, label: 'Income', path: '/income' },
     { icon: Receipt, label: 'Expenses', path: '/expenses' },
     { icon: PiggyBank, label: 'Savings', path: '/savings' },
     { icon: BarChart3, label: 'Reports', path: '/reports' },
@@ -97,7 +97,7 @@ export function AppSidebar() {
                 </SidebarGroup>
             </SidebarContent>
 
-            <SidebarFooter className="border-t border-sidebar-border/40 p-3">
+            <SidebarFooter className="border-t border-sidebar-border/40 p-3 mb-2">
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <DropdownMenu>

@@ -167,7 +167,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
         queryKey: ['income', filters.dateRange.from?.toISOString(), filters.dateRange.to?.toISOString()],
         queryFn: async () => {
             if (!user || !filters.dateRange.from || !filters.dateRange.to) return [];
-            console.log(`Fetching income from ${filters.dateRange.from.toISOString()} to ${filters.dateRange.to.toISOString()} `); // Debug log
+
             const { data, error } = await supabase
                 .from('income')
                 .select('*')
@@ -190,7 +190,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
         queryKey: ['expenses', filters.dateRange.from?.toISOString(), filters.dateRange.to?.toISOString()],
         queryFn: async () => {
             if (!user || !filters.dateRange.from || !filters.dateRange.to) return [];
-            console.log(`Fetching expenses from ${filters.dateRange.from.toISOString()} to ${filters.dateRange.to.toISOString()} `); // Debug log
+
             const { data, error } = await supabase
                 .from('expenses')
                 .select('*')
@@ -271,13 +271,13 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
             return data;
         },
         onSuccess: (data) => {
-            console.log("!!! addIncomeMutation onSuccess FIRING in Context for data:", data);
+
             const incomeQueryKey: QueryKey = ['income', filters.dateRange.from?.toISOString(), filters.dateRange.to?.toISOString()];
 
             // --- Manual Cache Update ---
             queryClient.setQueryData<Income[]>(incomeQueryKey, (oldData) => {
                 if (oldData) {
-                    console.log("!!! addIncomeMutation: Manually updating cache...");
+
                     // Add new item to the beginning of the array
                     return [data, ...oldData];
                 }
@@ -285,16 +285,16 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
                 // Returning undefined might be safer if you rely on invalidation for initial load
                 return oldData; // Or potentially: return [data]; if cache should always exist after add
             });
-            console.log("!!! addIncomeMutation: Cache update attempted.");
+
 
             // --- Keep Invalidation (Optional but Recommended) ---
             queryClient.invalidateQueries({ queryKey: incomeQueryKey });
-            console.log("!!! addIncomeMutation: Invalidated ['income'] query (after manual update).");
+
 
             toast({ title: "Success", description: "Income added." });
         },
         onError: (error) => {
-            console.error("!!! addIncomeMutation onError FIRING in Context:", error);
+            // console.error("!!! addIncomeMutation onError FIRING in Context:", error);
             onMutationError(error, "Failed to add income.", null, financeKeys.income(user?.id, filters));
         },
     });
@@ -529,7 +529,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
             !hasTriggeredDefaultCategories.current &&
             !addDefaultCategoriesMutation.isPending
         ) {
-            console.log("FinanceContext: No categories found, triggering automatic setup...");
+
             hasTriggeredDefaultCategories.current = true;
             addDefaultCategoriesMutation.mutate();
         }

@@ -32,7 +32,7 @@ import {
   startOfWeek, endOfWeek,
   addMonths, subMonths,
   addYears, subYears,
-  addWeeks,
+  addWeeks, subWeeks,
   isWithinInterval,
   getYear, getMonth
 } from 'date-fns';
@@ -354,7 +354,7 @@ const ReportsPage = () => {
 
   const generatePDF = () => {
     if (filteredExpenses.length === 0 && filteredIncome.length === 0) {
-      toast({ title: "No data", description: "There is no data to generate a report for.", variant: "secondary" });
+      toast({ title: "No data", description: "There is no data to generate a report for.", variant: "default" });
       return;
     }
 
@@ -685,11 +685,21 @@ const ReportsPage = () => {
                     <div className="h-[350px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
-                          <Pie data={pieChartData} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`} outerRadius={120} fill="#8884d8" dataKey="value">
+                          <Pie
+                            data={pieChartData}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
+                            outerRadius={105}
+                            fill="#8884d8"
+                            dataKey="value"
+                            paddingAngle={2}
+                          >
                             {pieChartData.map((entry, index) => (<Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />))}
                           </Pie>
                           <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                          <Legend />
+                          <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
@@ -725,11 +735,21 @@ const ReportsPage = () => {
                     <div className="h-[350px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
-                          <Pie data={Object.entries(incomeCategoryData).map(([name, value]) => ({ name, value }))} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`} outerRadius={120} fill="#8884d8" dataKey="value">
+                          <Pie
+                            data={Object.entries(incomeCategoryData).map(([name, value]) => ({ name, value }))}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
+                            outerRadius={105}
+                            fill="#8884d8"
+                            dataKey="value"
+                            paddingAngle={2}
+                          >
                             {Object.entries(incomeCategoryData).map(([name], index) => (<Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />))}
                           </Pie>
                           <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                          <Legend />
+                          <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>

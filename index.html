@@ -5,7 +5,19 @@
   <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#a78bfa" />
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#2563EB" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#3B82F6" />
+  <style>
+    :root {
+      --splash-bg: #2563EB;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --splash-bg: #3B82F6;
+      }
+    }
+  </style>
 
   <!-- Preconnect to Google Fonts for better performance -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -22,7 +34,7 @@
 <body>
   <div id="root">
     <div
-      style="background-color: #2563EB; height: 100vh; width: 100vw; display: flex; align-items: center; justify-content: center; color: white; font-family: 'Inter', sans-serif; font-size: 2rem; font-weight: bold;">
+      style="background-color: var(--splash-bg); height: 100vh; width: 100vw; display: flex; align-items: center; justify-content: center; color: white; font-family: 'Inter', sans-serif; font-size: 2rem; font-weight: bold;">
       Diligence Finance
     </div>
   </div>

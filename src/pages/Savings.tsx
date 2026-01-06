@@ -37,6 +37,8 @@ type Saving = {
 // Define keys that can be sorted
 type SortableKeys = keyof Omit<Saving, 'user_id' | 'description'> | 'progress';
 
+
+
 // Reusable Form Component State Type
 type SavingFormData = {
   title: string;
@@ -404,8 +406,8 @@ const SavingsPage = () => {
       <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
         {/* Add Button & Quick Summary */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
-          <div className="bg-muted/30 p-2 rounded-2xl border border-border/40 flex items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+          <div className="w-full sm:w-auto bg-muted/30 p-2 rounded-2xl border border-border/40 flex items-center gap-4">
+            <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
               <PiggyBank className="h-6 w-6" />
             </div>
             <div>
@@ -416,7 +418,7 @@ const SavingsPage = () => {
           {/* Add Saving Dialog Trigger & Container */}
           <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
             <DialogTrigger asChild>
-              <Button>
+              <Button className="w-full sm:w-auto h-12 sm:h-10 rounded-xl font-bold">
                 <Plus className="mr-2 h-4 w-4" />
                 Add Saving Goal
               </Button>
@@ -433,24 +435,24 @@ const SavingsPage = () => {
 
         {/* Summary Cards */}
         <div className="grid gap-6 md:grid-cols-2">
-          <Card className="shadow-sm">
+          <Card className="shadow-sm rounded-3xl border-border/40">
             <CardHeader className="pb-2">
-              <CardTitle>Total Saved Amount</CardTitle>
+              <CardTitle className="text-lg font-bold">Total Saved Amount</CardTitle>
               <CardDescription>Sum of current amounts across all goals</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-primary">
+              <div className="text-3xl font-black text-primary tracking-tight">
                 {loading ? <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /> : formatCurrency(totalSavings)}
               </div>
             </CardContent>
           </Card>
 
-          <Card className="shadow-sm">
+          <Card className="shadow-sm rounded-3xl border-border/40">
             <CardHeader>
-              <CardTitle>Goal Progress Overview</CardTitle>
+              <CardTitle className="text-lg font-bold">Goal Progress Overview</CardTitle>
               <CardDescription>Quick view of active goals</CardDescription>
             </CardHeader>
-            <CardContent className="max-h-48 overflow-y-auto space-y-3 pr-2"> {/* Limit height and add scroll */}
+            <CardContent className="max-h-48 overflow-y-auto space-y-4 pr-2 custom-scrollbar"> {/* Limit height and add scroll */}
               {loading ? (
                 <div className="space-y-3">
                   {[...Array(2)].map((_, i) => (<div key={i} className="animate-pulse"><div className="h-4 bg-muted rounded w-3/4 mb-1"></div><div className="h-2 bg-muted rounded w-full"></div></div>))}
@@ -460,13 +462,13 @@ const SavingsPage = () => {
                   .filter(s => s.goal_amount && s.goal_amount > 0) // Only show items with actual goals
                   .map(saving => (
                     <div key={saving.id}>
-                      <div className="flex justify-between items-center text-sm mb-1">
-                        <span className="font-medium truncate pr-2" title={saving.title}>{saving.title}</span>
-                        <span className="text-muted-foreground flex-shrink-0">
+                      <div className="flex justify-between items-center text-sm mb-1.5">
+                        <span className="font-bold truncate pr-2 text-foreground/80" title={saving.title}>{saving.title}</span>
+                        <span className="text-muted-foreground font-mono flex-shrink-0 text-xs">
                           {getProgress(saving).toFixed(0)}%
                         </span>
                       </div>
-                      <Progress value={getProgress(saving)} className="h-2" />
+                      <Progress value={getProgress(saving)} className="h-2.5 rounded-full" />
                     </div>
                   ))
               ) : (
@@ -476,121 +478,163 @@ const SavingsPage = () => {
           </Card>
         </div>
 
-        {/* Savings List Table */}
-        <Card className="shadow-sm">
-          <CardHeader>
-            <CardTitle>Savings Details</CardTitle>
-            <CardDescription>Your recorded savings goals and history.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              // Simple Table Skeleton Loader
-              <div className="space-y-2">
-                <div className="h-10 bg-muted rounded w-full"></div> {/* Header */}
-                {[...Array(3)].map((_, i) => (<div key={i} className="h-12 bg-muted/50 rounded w-full"></div>))}
-              </div>
-            ) : savings.length > 0 ? (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <SortableTableHead sortKey="title" currentSort={sortConfig} requestSort={requestSort}>Title</SortableTableHead>
-                      <SortableTableHead sortKey="amount" currentSort={sortConfig} requestSort={requestSort}>Current</SortableTableHead>
-                      <SortableTableHead sortKey="goal_amount" currentSort={sortConfig} requestSort={requestSort}>Goal</SortableTableHead>
-                      <SortableTableHead sortKey="progress" currentSort={sortConfig} requestSort={requestSort}>Progress</SortableTableHead>
-                      <TableHead>Projection (per wk/mo)</TableHead>
-                      <SortableTableHead sortKey="target_date" currentSort={sortConfig} requestSort={requestSort}>Target Date</SortableTableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sortedSavings.map((saving) => {
-                      const progress = getProgress(saving);
-                      const isCompleted = saving.goal_amount && saving.amount >= saving.goal_amount;
-                      const { weekly, monthly, remainingAmount } = calculateProjections(saving); // Calculate projections
+        {/* Savings List - Responsive: Table on Desktop, Cards on Mobile */}
+        <div className="space-y-4">
+          <h3 className="text-xl font-black tracking-tight px-1">Savings Details</h3>
 
-                      return (
-                        <TableRow key={saving.id} className={cn(isCompleted && "bg-green-50 dark:bg-green-900/20")}>
-                          <TableCell className="font-medium max-w-[150px] truncate" title={saving.title}>{saving.title}</TableCell>
-                          <TableCell>{formatCurrency(saving.amount)}</TableCell>
-                          <TableCell>{saving.goal_amount ? formatCurrency(saving.goal_amount) : <span className="text-muted-foreground text-xs">N/A</span>}</TableCell>
-                          <TableCell>
-                            {saving.goal_amount ? (
-                              <div className="flex items-center gap-2 min-w-[120px]"> {/* Ensure minimum width */}
-                                <Progress value={progress} className="h-2 flex-grow" />
-                                <span className="text-xs font-medium w-10 text-right">
-                                  {progress.toFixed(0)}%
-                                </span>
-                                {isCompleted && <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />}
+          {loading ? (
+            <div className="space-y-4">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-32 bg-muted/20 animate-pulse rounded-3xl" />
+              ))}
+            </div>
+          ) : savings.length > 0 ? (
+            <>
+              {/* Desktop Table View */}
+              <Card className="shadow-sm border-border/40 rounded-[2rem] hidden md:block overflow-hidden">
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader className="bg-muted/30">
+                      <TableRow className="hover:bg-transparent border-border/40">
+                        <SortableTableHead sortKey="title" currentSort={sortConfig} requestSort={requestSort}>Title</SortableTableHead>
+                        <SortableTableHead sortKey="amount" currentSort={sortConfig} requestSort={requestSort}>Current</SortableTableHead>
+                        <SortableTableHead sortKey="goal_amount" currentSort={sortConfig} requestSort={requestSort}>Goal</SortableTableHead>
+                        <SortableTableHead sortKey="progress" currentSort={sortConfig} requestSort={requestSort}>Progress</SortableTableHead>
+                        <TableHead>Projection</TableHead>
+                        <SortableTableHead sortKey="target_date" currentSort={sortConfig} requestSort={requestSort}>Target Date</SortableTableHead>
+                        <TableHead className="text-right pr-6">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {sortedSavings.map((saving) => {
+                        const progress = getProgress(saving);
+                        const isCompleted = saving.goal_amount && saving.amount >= saving.goal_amount;
+                        const { weekly, monthly, remainingAmount } = calculateProjections(saving);
+
+                        return (
+                          <TableRow key={saving.id} className={cn("border-border/40 transition-colors hover:bg-muted/20", isCompleted && "bg-green-50/50 dark:bg-green-900/10")}>
+                            <TableCell className="font-bold py-4">{saving.title}</TableCell>
+                            <TableCell className="font-mono text-muted-foreground">{formatCurrency(saving.amount)}</TableCell>
+                            <TableCell className="font-mono text-muted-foreground">{saving.goal_amount ? formatCurrency(saving.goal_amount) : <span className="text-muted-foreground/50">-</span>}</TableCell>
+                            <TableCell className="w-[20%]">
+                              {saving.goal_amount ? (
+                                <div className="flex items-center gap-2">
+                                  <Progress value={progress} className="h-2 flex-grow" />
+                                  <span className="text-xs font-mono w-9 text-right">{progress.toFixed(0)}%</span>
+                                </div>
+                              ) : <span className="text-muted-foreground/50 text-xs">No goal</span>}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {weekly ? `${formatCurrency(weekly)}/wk` : '-'}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">{saving.target_date ? formatDate(saving.target_date) : '-'}</TableCell>
+                            <TableCell className="text-right pr-4">
+                              <div className="flex justify-end gap-1">
+                                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg hover:bg-primary/10 hover:text-primary" onClick={() => openAddFundsDialog(saving)}>
+                                  <Plus className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={() => openEditDialog(saving)}>
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg hover:bg-destructive/10 hover:text-destructive" onClick={() => confirmDelete(saving)}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
                               </div>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">No goal set</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            {isCompleted ? (
-                              <span className="text-green-600 flex items-center gap-1"><CheckCircle className="h-3 w-3" /> Goal Reached!</span>
-                            ) : weekly !== null || monthly !== null ? (
-                              <div className="flex flex-col">
-                                {weekly !== null && <span title={`Remaining: ${formatCurrency(remainingAmount)}`}>{formatCurrency(weekly)}/wk</span>}
-                                {monthly !== null && <span title={`Remaining: ${formatCurrency(remainingAmount)}`}>{formatCurrency(monthly)}/mo</span>}
-                              </div>
-                            ) : saving.goal_amount && saving.target_date ? (
-                              <span className="text-muted-foreground">No target date or past due</span>
-                            ) : (
-                              <span className="text-muted-foreground">N/A</span>
-                            )}
-                          </TableCell>
-                          <TableCell>{saving.target_date ? formatDate(saving.target_date) : <span className="text-muted-foreground text-xs">None</span>}</TableCell>
-                          <TableCell>
-                            <div className="flex space-x-1">
-                              {/* Add Funds */}
-                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Add Funds" onClick={() => openAddFundsDialog(saving)}>
-                                <Plus className="h-4 w-4" />
-                              </Button>
-                              {/* Edit */}
-                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Edit" onClick={() => openEditDialog(saving)}>
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              {/* Delete */}
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Delete" onClick={() => confirmDelete(saving)}>
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+
+              {/* Mobile Card View */}
+              <div className="grid grid-cols-1 gap-4 md:hidden">
+                {sortedSavings.map((saving) => {
+                  const progress = getProgress(saving);
+                  const isCompleted = saving.goal_amount && saving.amount >= saving.goal_amount;
+
+                  return (
+                    <div key={saving.id} className={cn(
+                      "group relative bg-card rounded-[1.5rem] p-5 border border-border/40 shadow-sm overflow-hidden active:scale-[0.98] transition-all duration-200",
+                      isCompleted ? "bg-green-50/30 dark:bg-green-900/10 border-green-200/50" : ""
+                    )}>
+                      {/* Background decoration */}
+                      <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-bl-[4rem] -mr-4 -mt-4" />
+
+                      <div className="relative z-10">
+                        <div className="flex justify-between items-start mb-4">
+                          <div>
+                            <h4 className="font-bold text-lg leading-tight mb-1">{saving.title}</h4>
+                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                              Target: {saving.target_date ? formatDate(saving.target_date) : 'No Date'}
+                            </p>
+                          </div>
+                          <div className="flex gap-1 -mr-2">
+                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" onClick={() => openEditDialog(saving)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-destructive" onClick={() => confirmDelete(saving)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="flex items-end gap-1 mb-4">
+                          <span className="text-3xl font-black tracking-tighter text-foreground">
+                            {formatCurrency(saving.amount).replace(/\.00$/, '')}
+                          </span>
+                          {saving.goal_amount && (
+                            <span className="text-sm font-medium text-muted-foreground mb-1.5 ml-1">
+                              / {formatCurrency(saving.goal_amount).replace(/\.00$/, '')}
+                            </span>
+                          )}
+                        </div>
+
+                        {saving.goal_amount && (
+                          <div className="space-y-2">
+                            <div className="flex justify-between text-xs font-semibold">
+                              <span className={isCompleted ? "text-green-600" : "text-primary"}>
+                                {isCompleted ? "Goal Reached! 🎉" : `${progress.toFixed(0)}% funded`}
+                              </span>
+                              <span className="text-muted-foreground">
+                                {formatCurrency(Math.max(0, saving.goal_amount - saving.amount))} left
+                              </span>
                             </div>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
+                            <Progress value={progress} className="h-3 rounded-full bg-secondary" />
+                          </div>
+                        )}
+
+                        <Button
+                          className="w-full mt-5 h-12 rounded-xl font-bold shadow-sm"
+                          variant={isCompleted ? "outline" : "default"}
+                          onClick={() => openAddFundsDialog(saving)}
+                        >
+                          {isCompleted ? "Add Bonus Funds" : "Add Funds"} <Plus className="ml-2 h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            ) : (
-              // Enhanced Empty State
-              <div className="text-center py-16 px-6 border rounded-md">
-                <PiggyBank className="mx-auto h-16 w-16 text-muted-foreground/50 mb-4" />
-                <h3 className="text-xl font-semibold mb-2">No Savings Goals Yet</h3>
-                <p className="text-muted-foreground mb-6">
-                  Start tracking your progress towards your financial goals.
-                </p>
-                {/* Also include the Add Dialog Trigger here for convenience */}
-                <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Add Your First Goal
-                    </Button>
-                  </DialogTrigger>
-                  <SavingFormDialog
-                    mode="add"
-                    onOpenChange={setAddDialogOpen}
-                    onSubmit={handleAddSaving}
-                    isSubmitting={isSubmitting}
-                  />
-                </Dialog>
+            </>
+          ) : (
+            // Empty State
+            <div className="flex flex-col items-center justify-center py-16 px-6 border border-border/50 border-dashed rounded-[2rem] bg-muted/20 text-center">
+              <div className="h-20 w-20 rounded-[2rem] bg-background shadow-sm flex items-center justify-center mb-6 text-muted-foreground/50">
+                <PiggyBank className="h-10 w-10" />
               </div>
-            )}
-          </CardContent>
-        </Card>
+              <h3 className="text-xl font-bold text-foreground mb-2">No Savings Goals Yet</h3>
+              <p className="text-muted-foreground max-w-[280px] mb-8">
+                Start tracking your progress towards your financial dreams today.
+              </p>
+              <Button onClick={() => setAddDialogOpen(true)} className="h-12 px-8 rounded-2xl font-bold shadow-lg shadow-primary/20">
+                Create First Goal
+              </Button>
+            </div>
+          )}
+        </div>
 
         {/* --- Dialog Containers (The content is rendered inside these when open) --- */}
 
@@ -764,26 +808,26 @@ const SavingFormDialog = ({ mode, onOpenChange, onSubmit, isSubmitting, initialD
       <form onSubmit={handleSubmit}>
         <div className="grid gap-4 py-4">
           {/* Title */}
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="title" className="text-right">Title</Label>
-            <Input id="title" placeholder="e.g., Emergency Fund" value={title} onChange={(e) => setTitle(e.target.value)} className="col-span-3" required />
+          <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
+            <Label htmlFor="title" className="text-left sm:text-right">Title</Label>
+            <Input id="title" placeholder="e.g., Emergency Fund" value={title} onChange={(e) => setTitle(e.target.value)} className="col-span-1 sm:col-span-3" required />
           </div>
           {/* Amount */}
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="amount" className="text-right">{mode === 'add' ? 'Initial Amount' : 'Current Amount'}</Label>
-            <Input id="amount" type="number" step="0.01" min="0" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} className="col-span-3" required />
+          <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
+            <Label htmlFor="amount" className="text-left sm:text-right">{mode === 'add' ? 'Initial Amount' : 'Current Amount'}</Label>
+            <Input id="amount" type="number" step="0.01" min="0" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} className="col-span-1 sm:col-span-3" required />
           </div>
           {/* Goal Amount */}
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="goalAmount" className="text-right">Goal Amount</Label>
-            <Input id="goalAmount" type="number" step="0.01" min="0.01" placeholder="Optional: e.g., 1000.00" value={goalAmount} onChange={(e) => setGoalAmount(e.target.value)} className="col-span-3" />
+          <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
+            <Label htmlFor="goalAmount" className="text-left sm:text-right">Goal Amount</Label>
+            <Input id="goalAmount" type="number" step="0.01" min="0.01" placeholder="Optional: e.g., 1000.00" value={goalAmount} onChange={(e) => setGoalAmount(e.target.value)} className="col-span-1 sm:col-span-3" />
           </div>
           {/* Date */}
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="date-popover" className="text-right">{mode === 'add' ? 'Date Started' : 'Date Started'}</Label>
+          <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
+            <Label htmlFor="date-popover" className="text-left sm:text-right">{mode === 'add' ? 'Date Started' : 'Date Started'}</Label>
             <Popover>
               <PopoverTrigger asChild>
-                <Button id="date-popover" variant="outline" className={cn("col-span-3 justify-start text-left font-normal", !date && "text-muted-foreground")}>
+                <Button id="date-popover" variant="outline" className={cn("col-span-1 sm:col-span-3 justify-start text-left font-normal", !date && "text-muted-foreground")}>
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {date ? format(date, "PPP") : <span>Pick a date</span>}
                 </Button>
@@ -794,11 +838,11 @@ const SavingFormDialog = ({ mode, onOpenChange, onSubmit, isSubmitting, initialD
             </Popover>
           </div>
           {/* Target Date */}
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="targetDate-popover" className="text-right">Target Date</Label>
+          <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
+            <Label htmlFor="targetDate-popover" className="text-left sm:text-right">Target Date</Label>
             <Popover>
               <PopoverTrigger asChild>
-                <Button id="targetDate-popover" variant="outline" className={cn("col-span-3 justify-start text-left font-normal", !targetDate && "text-muted-foreground")}>
+                <Button id="targetDate-popover" variant="outline" className={cn("col-span-1 sm:col-span-3 justify-start text-left font-normal", !targetDate && "text-muted-foreground")}>
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {targetDate ? format(targetDate, "PPP") : <span>Optional: Pick a target</span>}
                 </Button>
