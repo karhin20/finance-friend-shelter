@@ -729,7 +729,7 @@ const Dashboard = () => {
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-[460px] p-0 overflow-hidden border-none shadow-2xl rounded-[2.5rem] bg-background">
+        <DialogContent className="sm:max-w-[460px] max-h-[90vh] overflow-y-auto p-0 border-none shadow-2xl rounded-[2.5rem] bg-background [&>button]:text-primary-foreground [&>button]:top-6 [&>button]:right-6 [&>button]:opacity-100 hover:[&>button]:opacity-90">
           <div className="bg-primary p-10 text-primary-foreground relative">
             <div className="absolute top-0 right-0 p-8 opacity-20">
               <TrendingUp className="h-32 w-32 rotate-12" />
