@@ -30,9 +30,11 @@ import {
   startOfMonth, endOfMonth,
   startOfYear, endOfYear,
   startOfWeek, endOfWeek,
+  startOfDay, endOfDay,
   addMonths, subMonths,
   addYears, subYears,
   addWeeks, subWeeks,
+  addDays, subDays,
   isWithinInterval,
   getYear, getMonth
 } from 'date-fns';
@@ -71,7 +73,7 @@ const ReportsPage = () => {
   const isLoading = isIncomeLoading || isExpensesLoading;
 
   const [activeTab, setActiveTab] = useState('overview');
-  const [timeRange, setTimeRange] = useState<'week' | 'month' | 'year' | 'custom'>('month');
+  const [timeRange, setTimeRange] = useState<'day' | 'week' | 'month' | 'year' | 'custom'>('month');
   const [currentPeriod, setCurrentPeriod] = useState(() => new Date());
   // Initialize custom range to current month
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>({
@@ -100,6 +102,10 @@ const ReportsPage = () => {
       rangeStart = customDateRange.from;
       rangeEnd = customDateRange.to || customDateRange.from; // Default to single day if no end date
       rangeLabel = `${format(rangeStart, 'MMM d, yyyy')} - ${format(rangeEnd, 'MMM d, yyyy')}`;
+    } else if (timeRange === 'day') {
+      rangeStart = startOfDay(currentPeriod);
+      rangeEnd = endOfDay(currentPeriod);
+      rangeLabel = format(currentPeriod, 'MMMM d, yyyy');
     } else if (timeRange === 'week') {
       rangeStart = startOfWeek(currentPeriod, { weekStartsOn: 1 });
       rangeEnd = endOfWeek(currentPeriod, { weekStartsOn: 1 });
@@ -133,7 +139,9 @@ const ReportsPage = () => {
     if (timeRange === 'custom') return; // Navigation disabled for custom range
 
     const amount = direction === 'prev' ? -1 : 1;
-    if (timeRange === 'week') {
+    if (timeRange === 'day') {
+      setCurrentPeriod(prev => addDays(prev, amount));
+    } else if (timeRange === 'week') {
       setCurrentPeriod(prev => addWeeks(prev, amount));
     } else if (timeRange === 'month') {
       setCurrentPeriod(prev => addMonths(prev, amount));
@@ -173,7 +181,9 @@ const ReportsPage = () => {
         const date = new Date(dateStr);
         if (isNaN(date.getTime())) return 'Invalid Date';
 
-        if (timeRange === 'week' || timeRange === 'custom') {
+        if (timeRange === 'day') {
+          return format(date, 'h a'); // Hourly
+        } else if (timeRange === 'week' || timeRange === 'custom') {
           // For custom ranges shorter than a month, show days. 
           // If custom range is long, ideally we'd switch to months, but for simplicity showing days or basic format:
           return format(date, 'MMM d');
@@ -203,6 +213,14 @@ const ReportsPage = () => {
     if (timeRange === 'year') {
       const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       keys.sort((a, b) => monthOrder.indexOf(a) - monthOrder.indexOf(b));
+    } else if (timeRange === 'day') {
+      // Sort by hour
+      const getHourValue = (h: string) => {
+        // Create a dummy date with the hour string to sort correctly (e.g. 1 PM vs 11 AM)
+        const date = new Date(`2000/01/01 ${h}`);
+        return date.getTime();
+      };
+      keys.sort((a, b) => getHourValue(a) - getHourValue(b));
     } else if (timeRange === 'month') {
       keys.sort((a, b) => parseInt(a) - parseInt(b));
     } else {
@@ -258,7 +276,11 @@ const ReportsPage = () => {
       const currentStart = start;
 
       if (comparePeriod === 'previous_period') {
-        if (timeRange === 'week') {
+        if (timeRange === 'day') {
+          compareStart = subDays(currentStart, 1);
+          compareEnd = endOfDay(compareStart);
+          label = 'Yesterday';
+        } else if (timeRange === 'week') {
           compareStart = subWeeks(currentStart, 1);
           compareEnd = endOfWeek(compareStart, { weekStartsOn: 1 });
           label = `Prev. Week`;
@@ -272,8 +294,10 @@ const ReportsPage = () => {
           label = `Prev. Year`;
         }
       } else {
+        // Last Year
         compareStart = subYears(currentStart, 1);
-        if (timeRange === 'week') compareEnd = endOfWeek(addWeeks(compareStart, getMonth(currentStart) * 4 + currentStart.getDate() / 7), { weekStartsOn: 1 });
+        if (timeRange === 'day') compareEnd = endOfDay(compareStart);
+        else if (timeRange === 'week') compareEnd = endOfWeek(addWeeks(compareStart, getMonth(currentStart) * 4 + currentStart.getDate() / 7), { weekStartsOn: 1 });
         else if (timeRange === 'month') compareEnd = endOfMonth(addMonths(compareStart, getMonth(currentStart)));
         else compareEnd = endOfYear(compareStart);
         label = `Last Year`;
@@ -352,6 +376,7 @@ const ReportsPage = () => {
     }
   };
 
+  // ... (PDF generation remains mostly same, elided for brevity if not changing logic)
   const generatePDF = () => {
     if (filteredExpenses.length === 0 && filteredIncome.length === 0) {
       toast({ title: "No data", description: "There is no data to generate a report for.", variant: "default" });
@@ -361,45 +386,18 @@ const ReportsPage = () => {
     setIsGeneratingPDF(true);
     try {
       const doc = new jsPDF();
-      doc.setFont("helvetica", "normal"); // Enforce standard font
+      doc.setFont("helvetica", "normal");
 
       const pageWidth = doc.internal.pageSize.getWidth();
 
-      // Helper to strip special chars that might break the font
       const cleanText = (text: string) => {
-        return text.replace(/[^\x00-\x7F]/g, ""); // Remove non-ASCII chars
+        return text.replace(/[^\x00-\x7F]/g, "");
       };
 
-      // Safe currency formatter for PDF
-      const formatCurrencyPDF = (amount: number) => {
-        const formatted = new Intl.NumberFormat('en-US', {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        }).format(amount);
-
-        // Reconstruct basic currency string using safe characters
-        // If symbol is safe, use it, otherwise use code or fallback
-        let symbol = '$'; // Default
-        // We can't easily access global currency object here without context, 
-        // but we can try to guess from the context or just be safe.
-        // Actually, let's just use the formatted value + " " + code if possible, or just '$'
-        // Ideally we'd use the currency context, but to be extremely safe against garbled text:
-        return `${formatted}`; // Just the number for now if symbols are breaking it, OR:
-        // return `$ ${formatted}`; // Safe fallback
-      };
-
-      // Better Safe Currency Formatter
       const safeCurrency = (amount: number) => {
         const val = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
-        // We will use a hardcoded safe symbol or no symbol if we suspect encoding issues is the main culprit.
-        // The previous screenshot showed "&T&o&t&a&l", which is usually wide-char/kerning issue.
-        // Enforcing Helvetica usually fixes this.
-        // Let's try to include the symbol if it's simple.
-        return `${val}`; // Safest: just number. 
-        // If user really wants symbol, we can try `ZMW` textual code if we had it.
-        // For now, let's stick to clean numbers to prove readability first.
+        return `${val}`;
       };
-
 
       // Title
       doc.setFontSize(22);
@@ -579,17 +577,18 @@ const ReportsPage = () => {
 
             <Select
               value={timeRange}
-              onValueChange={(value: 'week' | 'month' | 'year' | 'custom') => {
+              onValueChange={(value: 'day' | 'week' | 'month' | 'year' | 'custom') => {
                 setTimeRange(value);
                 if (value !== 'custom') {
                   setCurrentPeriod(new Date());
                 }
               }}
             >
-              <SelectTrigger className="w-auto min-w-[140px]">
+              <SelectTrigger className="w-auto min-w-[120px] text-xs sm:text-sm h-9 sm:h-10">
                 <SelectValue placeholder="Select Range" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="day">Today</SelectItem>
                 <SelectItem value="week">Weekly</SelectItem>
                 <SelectItem value="month">Monthly</SelectItem>
                 <SelectItem value="year">Yearly</SelectItem>

@@ -5,7 +5,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/layout/AppSidebar';
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
-import { GlobalDateFilter } from '@/components/layout/GlobalDateFilter';
+import { useQuickAdd } from '@/contexts/QuickAddContext';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { IncomeForm } from '@/components/forms/IncomeForm';
+import { ExpenseForm } from '@/components/forms/ExpenseForm';
+import { DollarSign, Receipt } from 'lucide-react';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -14,6 +18,7 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const { isIncomeOpen, setIncomeOpen, isExpenseOpen, setExpenseOpen } = useQuickAdd();
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -30,7 +35,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
       </div>
     );
-
   }
 
   if (!user) return null;
@@ -50,6 +54,34 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           </main>
         </div>
         <MobileBottomNav />
+
+        {/* Global Quick Add Modals */}
+        <Dialog open={isIncomeOpen} onOpenChange={setIncomeOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center text-emerald-600">
+                <DollarSign className="mr-2 h-5 w-5" />
+                Add Income
+              </DialogTitle>
+              <DialogDescription>Record a new income transaction.</DialogDescription>
+            </DialogHeader>
+            <IncomeForm onSuccess={() => setIncomeOpen(false)} />
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={isExpenseOpen} onOpenChange={setExpenseOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center text-blue-600">
+                <Receipt className="mr-2 h-5 w-5" />
+                Add Expense
+              </DialogTitle>
+              <DialogDescription>Record a new expense transaction.</DialogDescription>
+            </DialogHeader>
+            <ExpenseForm onSuccess={() => setExpenseOpen(false)} />
+          </DialogContent>
+        </Dialog>
+
       </div>
     </SidebarProvider>
   );

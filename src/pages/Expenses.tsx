@@ -25,21 +25,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { addWeeks, addMonths, addYears, startOfWeek, startOfMonth, isWithinInterval } from 'date-fns';
-
-const calculateNextOccurrence = (startDate: Date, frequency: 'weekly' | 'monthly' | 'yearly'): Date => {
-  switch (frequency) {
-    case 'weekly':
-      return addWeeks(startDate, 1);
-    case 'monthly':
-      return addMonths(startDate, 1);
-    case 'yearly':
-      return addYears(startDate, 1);
-    default:
-      // Should not happen with type safety
-      console.warn("Invalid frequency provided to calculateNextOccurrence");
-      return startDate;
-  }
-};
+import { ExpenseForm } from '@/components/forms/ExpenseForm';
 
 const ExpensesPage = () => {
   const { toast } = useToast();
@@ -48,10 +34,9 @@ const ExpensesPage = () => {
   const {
     expensesQuery,
     categoriesQuery,
-    addExpenseMutation,
+    addExpenseMutation, // Keep if needed for local logic or leave it
     updateExpenseMutation,
     deleteExpenseMutation,
-    addDefaultCategoriesMutation
   } = useFinance();
 
   const { data: expenses = [], isLoading: isExpensesLoading, isError: isExpensesError, error: expensesError } = expensesQuery;
@@ -59,17 +44,6 @@ const ExpensesPage = () => {
 
   // Filter categories for expense type
   const expenseCategories = useMemo(() => allCategories.filter(c => c.type === 'expense'), [allCategories]);
-
-  // Form state
-  const [amount, setAmount] = useState<string>('');
-  const [category, setCategory] = useState<string>('');
-  const [date, setDate] = useState<Date>(new Date());
-  const [description, setDescription] = useState<string>('');
-
-  // Add recurring state
-  const [isRecurring, setIsRecurring] = useState(false);
-  const [frequency, setFrequency] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
-  const [createInitialTransaction, setCreateInitialTransaction] = useState(true);
 
   // Filtering and sorting
   const [searchQuery, setSearchQuery] = useState('');
@@ -257,100 +231,10 @@ const ExpensesPage = () => {
     });
   };
 
-  // --- Handle Add Expense ---
-  const handleAddExpense = async (e: React.FormEvent) => {
-    e.preventDefault();
-    // Basic validation
-    if (!amount || !date || !category || !user) {
-      toast({ title: "Missing Fields", description: "Amount, Date, and Category are required.", variant: "destructive" });
-      return;
-    }
-    const amountNum = parseFloat(amount);
-    if (isNaN(amountNum) || amountNum <= 0) {
-      toast({ title: "Invalid Amount", description: "Please enter a valid positive amount.", variant: "destructive" });
-      return;
-    }
-
-    if (isRecurring) {
-      // Determine the correct next_due_date
-      const startDateForRule = date; // The date selected in the form
-      const nextDueDateForDb = createInitialTransaction
-        ? calculateNextOccurrence(startDateForRule, frequency) // Calculate next occurrence if adding initial
-        : startDateForRule; // Otherwise, the first due date is the start date
-
-      // 1. Create the Recurring Rule
-      try {
-        const { error: recurringError } = await supabase.from('recurring_transactions').insert([{
-          user_id: user.id,
-          type: 'expense',
-          amount: amountNum,
-          category: category,
-          description: description.trim() || null,
-          frequency: frequency,
-          start_date: format(startDateForRule, 'yyyy-MM-dd'), // Use the selected date
-          next_due_date: format(nextDueDateForDb, 'yyyy-MM-dd'), // Use the calculated date
-          is_active: true
-        }]);
-        if (recurringError) throw recurringError;
-
-        toast({ title: "Recurring Expense Rule Saved", description: `Will add ${formatCurrency(amountNum)} ${frequency}.` });
-
-        // 2. Optionally Add the Initial Transaction (using the selected date)
-        if (createInitialTransaction) {
-          addExpenseMutation.mutate({
-            amount: amountNum,
-            date: startDateForRule.toISOString(), // Use the selected date for the initial transaction
-            category: category,
-            description: description.trim() || null,
-          }, {
-            onSuccess: () => {
-              toast({ title: "Initial Expense Added", description: "First transaction recorded." });
-              // Reset form only after both potentially succeed
-              setAmount(''); setDate(new Date()); setCategory(''); setDescription(''); setIsRecurring(false); setFrequency('monthly'); setCreateInitialTransaction(true);
-            },
-            onError: (error) => {
-              console.error("Error adding initial expense:", error);
-              toast({ title: "Error Adding Initial Expense", description: `Recurring rule saved, but failed to add initial transaction: ${error.message}`, variant: "destructive" });
-              // Reset form partially? Or leave as is? Consider UX.
-              setAmount(''); setDate(new Date()); setCategory(''); setDescription(''); setIsRecurring(false); setFrequency('monthly'); setCreateInitialTransaction(true);
-            }
-          });
-        } else {
-          // Reset form if only rule was created
-          setAmount(''); setDate(new Date()); setCategory(''); setDescription(''); setIsRecurring(false); setFrequency('monthly'); setCreateInitialTransaction(true);
-        }
-
-      } catch (error: any) {
-        console.error("Error saving recurring expense:", error);
-        toast({ title: "Error Saving Rule", description: `Failed to save recurring rule: ${error.message}`, variant: "destructive" });
-      }
-    } else {
-      // --- Add Single Expense Transaction ---
-      addExpenseMutation.mutate({
-        amount: amountNum,
-        date: date.toISOString(), // Use the selected date
-        category: category,
-        description: description.trim() || null,
-      }, {
-        onSuccess: () => {
-          setAmount(''); setDate(new Date()); setCategory(''); setDescription(''); setIsRecurring(false); setFrequency('monthly'); setCreateInitialTransaction(true); // Reset all form fields
-          toast({ title: "Expense Added", description: "Your expense has been recorded." });
-        },
-        onError: (error) => {
-          console.error("Error adding expense:", error);
-          toast({ title: "Error", description: `Failed to add expense: ${error.message}`, variant: "destructive" });
-        }
-      });
-    }
-  };
-
   // Determine Button Text
   const getButtonText = () => {
     if (addExpenseMutation.isLoading || updateExpenseMutation.isLoading) {
       return "Saving...";
-    }
-    if (isRecurring) {
-      return createInitialTransaction ? "Save Rule & Add Initial" : "Save Recurring Rule";
     }
     return "Add Expense";
   };
@@ -362,185 +246,15 @@ const ExpensesPage = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Add Expense Form */}
           <Card className="lg:col-span-1 shadow-sm">
-            <form onSubmit={handleAddExpense}>
-              <CardHeader>
-                <CardTitle>Add New Expense</CardTitle>
-                <CardDescription>
-                  Record a new expense transaction
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Quick Suggestions */}
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Quick Suggestions</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { label: 'Rent', category: 'Housing', icon: '🏠', color: 'text-blue-500 bg-blue-500/10 hover:bg-blue-500/20 border-blue-200' },
-                      { label: 'Groceries', category: 'Food & Dining', icon: '🛒', color: 'text-green-500 bg-green-500/10 hover:bg-green-500/20 border-green-200' },
-                      { label: 'Dining Out', category: 'Food & Dining', icon: '🍽️', color: 'text-orange-500 bg-orange-500/10 hover:bg-orange-500/20 border-orange-200' },
-                      { label: 'Internet', category: 'Bills & Utilities', icon: '🌐', color: 'text-indigo-500 bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-200' },
-                      { label: 'Electricity', category: 'Bills & Utilities', icon: '⚡', color: 'text-yellow-600 bg-yellow-500/10 hover:bg-yellow-500/20 border-yellow-200' },
-                      { label: 'Gasoline', category: 'Auto & Transport', icon: '⛽', color: 'text-red-500 bg-red-500/10 hover:bg-red-500/20 border-red-200' },
-                    ].map((suggestion) => (
-                      <Button
-                        key={suggestion.label}
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className={cn("h-7 text-xs px-2.5 py-0.5 rounded-full transition-colors border", suggestion.color)}
-                        onClick={() => {
-                          setDescription(suggestion.label);
-                          // Try to find the category in the user's categories
-                          const foundCat = expenseCategories.find(c =>
-                            c.name.toLowerCase() === suggestion.category.toLowerCase() ||
-                            c.name.toLowerCase().includes(suggestion.label.toLowerCase())
-                          );
-                          if (foundCat) {
-                            setCategory(foundCat.name);
-                          }
-                        }}
-                      >
-                        <span className="mr-1.5">{suggestion.icon}</span>
-                        {suggestion.label}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="amount">Amount</Label>
-                  <Input
-                    id="amount"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0.00"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="category">Category</Label>
-                  <Select value={category} onValueChange={setCategory} required disabled={isLoadingCategories || expenseCategories.length === 0}>
-                    <SelectTrigger id="category">
-                      <SelectValue placeholder={
-                        isLoadingCategories ? "Loading..." :
-                          expenseCategories.length === 0 ? "Add categories in Settings" :
-                            "Select category"
-                      } />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {!isLoadingCategories && expenseCategories.length > 0 && (
-                        expenseCategories.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.name}>
-                            {cat.name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="date">Date</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        id="date"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !date && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {date ? format(date, "PPP") : <span>Pick a date</span>}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={date}
-                        onSelect={(date) => date && setDate(date)}
-                        initialFocus
-                        className="p-3 pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description (Optional)</Label>
-                  <Textarea
-                    id="description"
-                    placeholder="e.g., Grocery shopping, Restaurant bill"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                  />
-                </div>
-
-                {/* === Add Recurring Options === */}
-                <div className="space-y-2 pt-2 border-t">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="recurring-expense"
-                      checked={isRecurring}
-                      onCheckedChange={(checked) => {
-                        setIsRecurring(checked === true);
-                        // Reset createInitialTransaction when unchecking recurring
-                        if (checked !== true) setCreateInitialTransaction(true);
-                      }}
-                      disabled={expenseCategories.length === 0} // Disable if no categories
-                    />
-                    <Label htmlFor="recurring-expense" className="font-medium">Set as Recurring Expense?</Label>
-                  </div>
-
-                  {isRecurring && (
-                    <div className="space-y-4 pl-6 pt-2">
-                      {/* Frequency Select */}
-                      <div>
-                        <Label htmlFor="frequency-expense">Frequency</Label>
-                        <Select value={frequency} onValueChange={(v: any) => setFrequency(v)} required={isRecurring}>
-                          <SelectTrigger id="frequency-expense">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="weekly">Weekly</SelectItem>
-                            <SelectItem value="monthly">Monthly</SelectItem>
-                            <SelectItem value="yearly">Yearly</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Starts on the selected date ({format(date, "PPP")}).
-                        </p>
-                      </div>
-                      {/* New Checkbox for Initial Transaction */}
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="create-initial-expense"
-                          checked={createInitialTransaction}
-                          onCheckedChange={(checked) => setCreateInitialTransaction(checked === true)}
-                        />
-                        <Label htmlFor="create-initial-expense" className="text-sm font-normal">Add first transaction now?</Label>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                {/* === End Recurring Options === */}
-
-              </CardContent>
-              <CardFooter>
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={addExpenseMutation.isLoading || expenseCategories.length === 0}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  {getButtonText()}
-                </Button>
-              </CardFooter>
-            </form>
+            <CardHeader>
+              <CardTitle>Add New Expense</CardTitle>
+              <CardDescription>
+                Record a new expense transaction
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ExpenseForm />
+            </CardContent>
           </Card>
 
           {/* Expenses List */}

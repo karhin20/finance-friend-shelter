@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Plus, Wallet, Receipt, Repeat, PiggyBank } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,10 +8,12 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useNavigate } from 'react-router-dom';
+import { useQuickAdd } from '@/contexts/QuickAddContext';
 
 export function FloatingActionButton() {
     const navigate = useNavigate();
     const [open, setOpen] = useState(false);
+    const { openIncomeModal, openExpenseModal } = useQuickAdd();
 
     return (
         <div className="fixed bottom-20 right-4 z-50 md:hidden">
@@ -26,11 +27,11 @@ export function FloatingActionButton() {
                     </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" side="top" className="mb-2 w-48 rounded-xl p-2 shadow-2xl border-border/50 bg-background/95 backdrop-blur">
-                    <DropdownMenuItem onClick={() => navigate('/income')} className="p-3 mb-1 cursor-pointer rounded-lg focus:bg-primary/10 focus:text-primary">
+                    <DropdownMenuItem onClick={openIncomeModal} className="p-3 mb-1 cursor-pointer rounded-lg focus:bg-primary/10 focus:text-primary">
                         <Wallet className="mr-2 h-4 w-4" />
                         <span className="font-medium">Add Income</span>
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => navigate('/expenses')} className="p-3 mb-1 cursor-pointer rounded-lg focus:bg-primary/10 focus:text-primary">
+                    <DropdownMenuItem onClick={openExpenseModal} className="p-3 mb-1 cursor-pointer rounded-lg focus:bg-primary/10 focus:text-primary">
                         <Receipt className="mr-2 h-4 w-4" />
                         <span className="font-medium">Add Expense</span>
                     </DropdownMenuItem>

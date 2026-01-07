@@ -8,6 +8,7 @@ import { SupabaseProvider } from "@/contexts/SupabaseContext";
 import { FinanceProvider } from "@/contexts/FinanceContext";
 import { CurrencyProvider } from "@/contexts/CurrencyContext";
 import { ThemeProvider } from "@/components/theme-provider";
+import { QuickAddProvider } from "@/contexts/QuickAddContext";
 import Index from "./pages/Index";
 import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
@@ -24,7 +25,14 @@ import Joyride, { Step } from 'react-joyride';
 import React, { useState, useEffect } from 'react';
 import ProtectedRoute from "./components/ProtectedRoute";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 30, // 30 minutes
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 const App = () => {
   const [runTour, setRunTour] = useState(false);
@@ -80,31 +88,33 @@ const App = () => {
           <SupabaseProvider>
             <CurrencyProvider>
               <FinanceProvider>
-                <TooltipProvider>
-                  <Toaster />
-                  <Sonner />
-                  <BrowserRouter>
-                    <Routes>
-                      <Route path="/" element={<Index />} />
-                      <Route path="/reset-password" element={<ResetPassword />} />
-                      <Route path="/db-setup" element={<DbSetup />} />
+                <QuickAddProvider>
+                  <TooltipProvider>
+                    <Toaster />
+                    <Sonner />
+                    <BrowserRouter>
+                      <Routes>
+                        <Route path="/" element={<Index />} />
+                        <Route path="/reset-password" element={<ResetPassword />} />
+                        <Route path="/db-setup" element={<DbSetup />} />
 
-                      {/* Protected Routes */}
-                      <Route element={<ProtectedRoute />}>
-                        <Route path="/dashboard" element={<Dashboard />} />
-                        <Route path="/income" element={<Income />} />
-                        <Route path="/expenses" element={<Expenses />} />
-                        <Route path="/savings" element={<Savings />} />
-                        <Route path="/reports" element={<Reports />} />
-                        <Route path="/settings" element={<Settings />} />
-                        <Route path="/budget" element={<Budget />} />
-                        <Route path="/recurring" element={<RecurringTransactionsPage />} />
-                      </Route>
+                        {/* Protected Routes */}
+                        <Route element={<ProtectedRoute />}>
+                          <Route path="/dashboard" element={<Dashboard />} />
+                          <Route path="/income" element={<Income />} />
+                          <Route path="/expenses" element={<Expenses />} />
+                          <Route path="/savings" element={<Savings />} />
+                          <Route path="/reports" element={<Reports />} />
+                          <Route path="/settings" element={<Settings />} />
+                          <Route path="/budget" element={<Budget />} />
+                          <Route path="/recurring" element={<RecurringTransactionsPage />} />
+                        </Route>
 
-                      <Route path="*" element={<NotFound />} />
-                    </Routes>
-                  </BrowserRouter>
-                </TooltipProvider>
+                        <Route path="*" element={<NotFound />} />
+                      </Routes>
+                    </BrowserRouter>
+                  </TooltipProvider>
+                </QuickAddProvider>
               </FinanceProvider>
             </CurrencyProvider>
           </SupabaseProvider>

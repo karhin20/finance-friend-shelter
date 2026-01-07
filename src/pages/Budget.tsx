@@ -12,9 +12,11 @@ import { Progress } from '@/components/ui/progress';
 import { PlusCircle, Trash2, AlertCircle, Edit, Lightbulb, Loader2, CheckCircle, Copy, Wallet, TrendingUp, TrendingDown, PiggyBank } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useFinance } from '@/contexts/FinanceContext';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Category, Income } from '@/lib/supabase';
 import { isWithinInterval, startOfMonth, endOfMonth, format, subMonths, addMonths } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import {
   AlertDialog,
@@ -42,22 +44,46 @@ const BudgetPage = () => {
   const { toast } = useToast();
   const { formatCurrency } = useCurrency();
   const { incomeQuery, expensesQuery, categoriesQuery } = useFinance();
+  const queryClient = useQueryClient();
   const { data: allIncome = [], isLoading: isIncomeLoading } = incomeQuery;
   const { data: allExpenses = [], isLoading: isExpensesLoading } = expensesQuery;
   const { data: allCategories = [], isLoading: isLoadingCategories } = categoriesQuery;
-  const [budgetItems, setBudgetItems] = useState<BudgetItem[]>(() => {
-    const cachedBudgetItems = localStorage.getItem('budgetItems');
-    return cachedBudgetItems ? JSON.parse(cachedBudgetItems) : [];
-  });
-  const [isLoadingBudget, setIsLoadingBudget] = useState(true);
-  const [isSubmittingBudget, setIsSubmittingBudget] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState('');
-  const [newAmount, setNewAmount] = useState('');
+
+  // --- Date State ---
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
+
+  // --- Data Fetching with Cache ---
+  const { data: budgetItems = [], isLoading: isLoadingBudget } = useQuery({
+    queryKey: ['budgets', user?.id, selectedMonth],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data, error } = await supabase
+        .from('budgets')
+        .select(`*, categories ( name )`)
+        .eq('user_id', user.id)
+        .eq('month', selectedMonth);
+
+      if (error) {
+        console.error('Error fetching budget data:', error);
+        throw error;
+      }
+      return data?.map(item => ({
+        ...item,
+        category: (item.categories as any)?.name || 'Unknown Category',
+      })) as BudgetItem[] || [];
+    },
+    enabled: !!user && !!selectedMonth,
+    staleTime: 1000 * 60 * 30, // 30 minutes cache
+  });
+
+  const [isSubmittingBudget, setIsSubmittingBudget] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
+  const [newAmount, setNewAmount] = useState('');
+
   const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
   const [suggestedAmount, setSuggestedAmount] = useState<number | null>(null);
   const [currentTab, setCurrentTab] = useState<'expense' | 'income'>('expense');
@@ -71,43 +97,7 @@ const BudgetPage = () => {
 
   const isOverallLoading = isIncomeLoading || isExpensesLoading || isLoadingBudget || isLoadingCategories;
 
-  const fetchBudgetData = useCallback(async () => {
-    if (!user) {
-      setIsLoadingBudget(false);
-      return;
-    }
-    setIsLoadingBudget(true);
-    try {
-      const { data: budgetData, error: budgetError } = await supabase
-        .from('budgets')
-        .select(`
-          *,
-          categories ( name )
-        `)
-        .eq('user_id', user.id)
-        .eq('month', selectedMonth);
 
-      if (budgetError) throw budgetError;
-
-      const formattedData = budgetData?.map(item => ({
-        ...item,
-        category: (item.categories as any)?.name || 'Unknown Category',
-      })) || [];
-
-      setBudgetItems(formattedData as any);
-      localStorage.setItem('budgetItems', JSON.stringify(formattedData)); // Refresh cache
-
-    } catch (error: any) {
-      console.error('Error fetching budget data:', error);
-      toast({ title: 'Error Loading Budget', description: `Failed to load budget data. Reason: ${error.message}`, variant: 'destructive' });
-    } finally {
-      setIsLoadingBudget(false);
-    }
-  }, [user, selectedMonth, toast]);
-
-  useEffect(() => {
-    fetchBudgetData();
-  }, [fetchBudgetData]);
 
   useEffect(() => {
     if (currentTab !== 'expense' || !selectedCategory || allExpenses.length === 0) {
@@ -235,10 +225,10 @@ const BudgetPage = () => {
           .single();
 
         if (error) throw error;
-        const categoryName = (data?.categories as any)?.name || categoryInfo.name;
-        updatedItem = { ...data, category: categoryName } as BudgetItem;
 
-        setBudgetItems(prev => prev.map(item => (item.id === existingBudget.id ? updatedItem! : item)));
+        // Invalidate cache
+        queryClient.invalidateQueries({ queryKey: ['budgets', user.id, selectedMonth] });
+
         toast({ title: 'Budget Updated', description: `Budget for ${categoryInfo.name} updated.` });
 
       } else {
@@ -249,10 +239,10 @@ const BudgetPage = () => {
           .single();
 
         if (error) throw error;
-        const categoryName = (data?.categories as any)?.name || categoryInfo.name;
-        updatedItem = { ...data, category: categoryName } as BudgetItem;
 
-        setBudgetItems(prev => [...prev, updatedItem!]);
+        // Invalidate cache
+        queryClient.invalidateQueries({ queryKey: ['budgets', user.id, selectedMonth] });
+
         toast({ title: 'Budget Set', description: `Budget for ${categoryInfo.name} set.` });
       }
 
@@ -285,10 +275,10 @@ const BudgetPage = () => {
 
       if (error) throw error;
 
-      setBudgetItems(prev => prev.filter(item => item.id !== budgetToDelete.id));
-      toast({ title: 'Budget Removed', description: `Budget for ${budgetToDelete.category} has been removed.` });
-      setDeleteDialogOpen(false);
       setBudgetToDelete(null);
+
+      // Invalidate cache
+      queryClient.invalidateQueries({ queryKey: ['budgets', user?.id, selectedMonth] });
 
     } catch (error: any) {
       console.error('Error deleting budget:', error);
@@ -344,13 +334,10 @@ const BudgetPage = () => {
 
       if (insertError) throw insertError;
 
-      const formattedInserted = insertedData?.map(item => ({
-        ...item,
-        category: (item.categories as any)?.name || 'Unknown Category',
-      })) || [];
+      toast({ title: 'Success', description: `Copied ${insertedData?.length} budget items from ${format(prevDate, 'MMMM')}.` });
 
-      setBudgetItems(prev => [...prev, ...(formattedInserted as any)]);
-      toast({ title: 'Success', description: `Copied ${formattedInserted.length} budget items from ${format(prevDate, 'MMMM')}.` });
+      // Invalidate cache
+      queryClient.invalidateQueries({ queryKey: ['budgets', user?.id, selectedMonth] });
 
     } catch (error: any) {
       console.error('Error copying budget:', error);
@@ -387,7 +374,7 @@ const BudgetPage = () => {
       const actual = getActualAmounts(category.name, type);
       const planned = budgetItem?.planned_amount ?? 0;
       const remaining = type === 'expense' ? planned - actual : actual - planned;
-      const percentage = planned > 0 ? (actual / planned) * 100 : (actual > 0 ? 101 : 0);
+      const percentage = planned > 0 ? (actual / planned) * 100 : (actual > 0 ? 100 : 0);
       const isOverBudget = type === 'expense' && remaining < 0 && planned > 0;
       const isOverIncomeGoal = type === 'income' && remaining > 0 && planned > 0;
 
@@ -406,93 +393,117 @@ const BudgetPage = () => {
     }).filter(Boolean);
 
     if (isOverallLoading) {
-      return <p className="text-center text-muted-foreground p-4">Loading budget data...</p>;
+      return (
+        <div className="flex flex-col items-center justify-center p-12 space-y-4 text-muted-foreground animate-pulse">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p>Loading budget data...</p>
+        </div>
+      );
     }
     if (displayItems.length === 0) {
-      return <p className="text-center text-muted-foreground p-4">No budget set and no {type} recorded for {format(new Date(selectedMonth + '-02'), 'MMMM yyyy')}.</p>;
+      return (
+        <div className="flex flex-col items-center justify-center p-12 text-center border-2 border-dashed rounded-2xl bg-muted/20">
+          <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
+            <Wallet className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <p className="text-lg font-medium">No {type} budgets found</p>
+          <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+            No budget rules set and no {type} transactions recorded for {format(new Date(selectedMonth + '-02'), 'MMMM yyyy')}.
+          </p>
+        </div>
+      );
     }
 
     return (
-      <div className="space-y-6">
+      <div className="grid gap-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
         {displayItems.map((item) => (
-          <div key={item!.id} className="space-y-2 border-b pb-4 last:border-b-0">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Label className="font-semibold">{item!.name}</Label>
-                {item!.isOverBudget && (
-                  <span title="Over budget">
-                    <AlertCircle className="h-4 w-4 text-destructive" />
-                  </span>
-                )}
-                {item!.isOverIncomeGoal && (
-                  <span title="Income goal met/exceeded">
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                  </span>
+          <Card key={item!.id} className={cn(
+            "overflow-hidden border-border/40 shadow-sm hover:shadow-md transition-all duration-300",
+            item!.isOverBudget && "border-destructive/30 bg-destructive/5"
+          )}>
+            <CardContent className="p-5">
+              {/* Header Row */}
+              <div className="flex justify-between items-start mb-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-lg">{item!.name}</span>
+                    {/* Status Badges */}
+                    {item!.isOverBudget && <Badge variant="destructive" className="rounded-md shadow-sm">Over Budget</Badge>}
+                    {item!.isOverIncomeGoal && <Badge variant="default" className="rounded-md bg-green-500 hover:bg-green-600 shadow-sm border-none">Goal Met</Badge>}
+                    {(!item!.isOverBudget && !item!.isOverIncomeGoal && item!.planned > 0) && (
+                      <Badge variant="outline" className="rounded-md font-normal text-muted-foreground">On Track</Badge>
+                    )}
+                    {item!.planned === 0 && (
+                      <Badge variant="secondary" className="rounded-md font-normal bg-muted text-muted-foreground hover:bg-muted">No Budget</Badge>
+                    )}
+                  </div>
+                </div>
+                {/* Actions (Only if budgeted) */}
+                {item!.budgetItem && (
+                  <div className="flex items-center gap-1 opacity-100 transition-opacity">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleEditBudget(item!.budgetItem!)}
+                      disabled={isSubmittingBudget}
+                      title="Edit Budget Amount"
+                      className="h-8 w-8 rounded-full hover:bg-background/80 text-muted-foreground hover:text-foreground"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => confirmDeleteBudget(item!.budgetItem!)}
+                      disabled={isSubmittingBudget}
+                      title="Delete Budget"
+                      className="h-8 w-8 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 )}
               </div>
-              {item!.budgetItem && (
-                <div className="flex items-center space-x-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleEditBudget(item!.budgetItem!)}
-                    disabled={isSubmittingBudget}
-                    title="Edit Budget Amount"
-                    className="h-7 w-7"
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => confirmDeleteBudget(item!.budgetItem!)}
-                    disabled={isSubmittingBudget}
-                    title="Delete Budget"
-                    className="h-7 w-7 text-destructive hover:bg-destructive/10"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+
+              {/* Progress & Stats */}
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm items-end">
+                  <div className="flex flex-col">
+                    <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">
+                      {type === 'expense' ? 'Spent' : 'Received'}
+                    </span>
+                    <span className="text-xl font-bold font-mono tracking-tight">
+                      {formatCurrency(item!.actual)}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-bold text-primary">{Math.min(item!.percentage, 100).toFixed(0)}%</span>
+                  </div>
                 </div>
-              )}
-            </div>
-            {item!.planned > 0 ? (
-              <>
+
                 <Progress
                   value={Math.min(item!.percentage, 100)}
-                  className={cn("h-2",
-                    item!.percentage > 100 ? (type === 'expense' ? 'bg-destructive/20' : 'bg-green-100') : '',
+                  className={cn("h-3 rounded-full bg-muted/50",
                     item!.isOverBudget ? '[&>div]:bg-destructive' : '',
                     item!.isOverIncomeGoal ? '[&>div]:bg-green-600' : ''
                   )}
                 />
-                <div className="flex flex-wrap justify-between text-sm gap-x-4 gap-y-1">
-                  <span className={cn("text-muted-foreground", item!.isOverBudget ? 'text-destructive font-medium' : '', item!.isOverIncomeGoal ? 'text-green-600 font-medium' : '')}>
-                    {type === 'expense' ? 'Spent' : 'Received'}: {formatCurrency(item!.actual)}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {type === 'expense' ? 'Remaining' : 'Difference'}: {formatCurrency(item!.remaining)}
-                  </span>
-                  <span className="text-muted-foreground">
-                    Budget: {formatCurrency(item!.planned)}
-                  </span>
+
+                <div className="flex justify-between items-center pt-3 mt-2 border-t border-border/40 text-sm">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Remaining</span>
+                    <span className={cn("font-bold font-mono text-base",
+                      item!.remaining < 0 ? "text-destructive" : (type === 'income' ? "text-muted-foreground" : "text-emerald-600")
+                    )}>{formatCurrency(item!.remaining)}</span>
+                  </div>
+                  <div className="flex flex-col text-right">
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Budget</span>
+                    <span className="font-bold font-mono text-base text-muted-foreground">{formatCurrency(item!.planned)}</span>
+                  </div>
                 </div>
-                {item!.isOverBudget && (
-                  <p className="text-xs text-destructive">
-                    Over budget by {formatCurrency(Math.abs(item!.remaining))}
-                  </p>
-                )}
-                {item!.isOverIncomeGoal && type === 'income' && (
-                  <p className="text-xs text-green-600">
-                    Goal exceeded by {formatCurrency(Math.abs(item!.remaining))}
-                  </p>
-                )}
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                No budget set. Current {type === 'expense' ? 'spending' : 'income'}: {formatCurrency(item!.actual)}
-              </p>
-            )}
-          </div>
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
     );
@@ -502,233 +513,223 @@ const BudgetPage = () => {
     <DashboardLayout>
       <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
 
-        {/* Top Controls: Month Selector + Copy Button */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="flex items-center gap-4 bg-card p-2 rounded-lg border shadow-sm">
-            <Input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => {
-                setSelectedMonth(e.target.value);
-                setSelectedCategory('');
-                setSelectedCategoryId('');
-                setNewAmount('');
-                setSuggestedAmount(null);
-              }}
-              className="w-[180px] border-none shadow-none focus-visible:ring-0"
-              disabled={isOverallLoading || isSubmittingBudget}
-            />
+        {/* === Toolbar === */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 rounded-[2rem] bg-white/50 dark:bg-card/50 border border-border/40 backdrop-blur-sm gap-4">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="h-10 w-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+              <Wallet className="h-5 w-5" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Budget Month</span>
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => {
+                  setSelectedMonth(e.target.value);
+                  setSelectedCategory('');
+                  setSelectedCategoryId('');
+                  setNewAmount('');
+                  setSuggestedAmount(null);
+                }}
+                disabled={isOverallLoading || isSubmittingBudget}
+                className="bg-transparent border-none p-0 h-6 text-lg font-bold focus:ring-0 cursor-pointer text-foreground"
+              />
+            </div>
           </div>
+
           <Button
             variant="outline"
             size="sm"
             onClick={handleCopyLastMonth}
             disabled={isSubmittingBudget}
-            title="Copy budget items from previous month"
+            className="rounded-xl h-10 border-primary/20 hover:bg-primary/5 hover:text-primary transition-colors text-xs font-bold uppercase tracking-wider"
           >
             <Copy className="h-4 w-4 mr-2" />
-            Copy Previous Month
+            Copy Last Month
           </Button>
         </div>
 
-        {/* Summary Cards Row */}
+        {/* === Summary Cards Grid === */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="shadow-sm border-l-4 border-l-primary">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Planned</CardTitle>
+          <Card className="shadow-sm border-none bg-gradient-to-br from-primary/5 to-primary/10 relative overflow-hidden">
+            <CardHeader className="pb-2 relative z-10">
+              <CardTitle className="text-xs font-bold text-primary/70 uppercase tracking-widest">Total Planned</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold flex items-center gap-2">
-                <Wallet className="h-5 w-5 text-primary opacity-70" />
+            <CardContent className="relative z-10">
+              <div className="text-3xl font-black text-primary tracking-tight">
                 {formatCurrency(totalPlanned)}
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                For {currentTab}s in {format(new Date(selectedMonth + '-02'), 'MMM yyyy')}
+              <p className="text-xs font-medium text-primary/60 mt-1">
+                {currentTab === 'expense' ? 'Limit' : 'Goal'} for {format(new Date(selectedMonth + '-02'), 'MMMM')}
               </p>
             </CardContent>
+            <Wallet className="absolute right-4 bottom-4 h-24 w-24 text-primary/5 z-0 rotate-12" />
           </Card>
 
-          <Card className="shadow-sm border-l-4 border-l-blue-500">
+          <Card className="shadow-sm border-none bg-card relative overflow-hidden group hover:shadow-md transition-all">
+            <div className={cn("absolute top-0 left-0 w-1 h-full", currentTab === 'expense' ? (totalActual > totalPlanned ? "bg-destructive" : "bg-blue-500") : "bg-green-500")}></div>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Actual</CardTitle>
+              <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Total Actual</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className={cn("text-2xl font-bold flex items-center gap-2",
-                currentTab === 'expense' && totalActual > totalPlanned ? "text-destructive" : "text-blue-600"
+              <div className={cn("text-3xl font-black tracking-tight",
+                currentTab === 'expense' && totalActual > totalPlanned ? "text-destructive" : "text-foreground"
               )}>
-                {currentTab === 'expense' ? <TrendingDown className="h-5 w-5 opacity-70" /> : <TrendingUp className="h-5 w-5 opacity-70" />}
                 {formatCurrency(totalActual)}
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {totalPercentage.toFixed(1)}% of budget
+              <p className="text-xs font-medium text-muted-foreground mt-1">
+                {totalPercentage.toFixed(0)}% used
               </p>
             </CardContent>
           </Card>
 
-          <Card className={cn("shadow-sm border-l-4",
-            totalRemaining < 0 ? "border-l-destructive" : "border-l-green-500"
-          )}>
+          <Card className="shadow-sm border-none bg-card relative overflow-hidden group hover:shadow-md transition-all">
+            <div className={cn("absolute top-0 left-0 w-1 h-full", totalRemaining < 0 ? "bg-destructive" : (currentTab === 'expense' ? "bg-emerald-500" : "bg-blue-500"))}></div>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+              <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
                 {currentTab === 'expense' ? 'Remaining' : 'Difference'}
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className={cn("text-2xl font-bold flex items-center gap-2",
-                totalRemaining < 0 && currentTab === 'expense' ? "text-destructive" : "text-green-600"
+              <div className={cn("text-3xl font-black tracking-tight",
+                totalRemaining < 0 ? "text-destructive" : "text-emerald-600"
               )}>
-                <PiggyBank className="h-5 w-5 opacity-70" />
                 {formatCurrency(totalRemaining)}
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {totalRemaining < 0
-                  ? (currentTab === 'expense' ? 'Over budget' : 'Under goal')
-                  : (currentTab === 'expense' ? 'Left to spend' : 'Above goal')}
+              <p className="text-xs font-medium text-muted-foreground mt-1">
+                {totalRemaining < 0 ? "Over budget" : "Available"}
               </p>
             </CardContent>
           </Card>
         </div>
 
 
-        <Card className="shadow-sm border-0 bg-transparent">
-          {/* Using transparent background to let the tabs stand out or integrate better */}
-          <CardHeader className="px-0 pt-0">
-            {/* Header removed from here to reduce clutter, moved tabs to be primary nav for this section */}
-          </CardHeader>
-          <CardContent className="p-0">
-            <Tabs value={currentTab} onValueChange={(value) => {
-              setCurrentTab(value as 'expense' | 'income');
-              setSelectedCategory('');
-              setSelectedCategoryId('');
-              setNewAmount('');
-              setSuggestedAmount(null);
-            }}>
+        {/* === Main Content Tabs === */}
+        <Tabs value={currentTab} onValueChange={(value) => {
+          setCurrentTab(value as 'expense' | 'income');
+          setSelectedCategory('');
+          setSelectedCategoryId('');
+          setNewAmount('');
+          setSuggestedAmount(null);
+        }}>
 
-              <div className="flex flex-col space-y-6">
-                {/* Tab List */}
-                <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
-                  <TabsTrigger value="expense">Expenses</TabsTrigger>
-                  <TabsTrigger value="income">Income</TabsTrigger>
-                </TabsList>
+          <div className="flex items-center justify-between mb-6">
+            <TabsList className="bg-muted/50 p-1 rounded-2xl h-auto inline-flex">
+              <TabsTrigger value="expense" className="rounded-xl px-6 py-2 text-sm font-bold data-[state=active]:bg-background data-[state=active]:shadow-sm transition-all">Expenses</TabsTrigger>
+              <TabsTrigger value="income" className="rounded-xl px-6 py-2 text-sm font-bold data-[state=active]:bg-background data-[state=active]:shadow-sm transition-all">Income</TabsTrigger>
+            </TabsList>
+          </div>
 
-                {/* Edit/Add Form - Contextual to the tab */}
-                <Card className="border-dashed bg-muted/40">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base">Manage {currentTab === 'expense' ? 'Expense' : 'Income'} Budget</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-col sm:flex-row gap-4 sm:items-end">
-                      <div className="flex-1 space-y-2">
-                        <Label htmlFor="category">Category</Label>
-                        <Select
-                          value={selectedCategoryId}
-                          onValueChange={(value) => {
-                            const selectedCat = (currentTab === 'expense' ? expenseCategories : incomeCategories).find(c => c.id === value);
-                            setSelectedCategoryId(value);
-                            setSelectedCategory(selectedCat?.name || '');
-                          }}
-                          disabled={isOverallLoading || isSubmittingBudget}
-                        >
-                          <SelectTrigger id="category" className="bg-background">
-                            <SelectValue placeholder={`Select ${currentTab} category`} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {isLoadingCategories ? (
-                              <SelectItem value="loading" disabled>Loading...</SelectItem>
-                            ) : (currentTab === 'expense' ? expenseCategories : incomeCategories).length === 0 ? (
-                              <SelectItem value="no-cat" disabled>No {currentTab} categories defined</SelectItem>
-                            ) : (
-                              (currentTab === 'expense' ? expenseCategories : incomeCategories).map(category => (
-                                <SelectItem key={category.id} value={category.id}>
-                                  {category.name}
-                                </SelectItem>
-                              ))
-                            )}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="w-full sm:w-auto space-y-2">
-                        <Label htmlFor="amount">Budget Amount</Label>
-                        <div className="flex flex-col xs:flex-row gap-2 items-stretch xs:items-center">
-                          <Input
-                            id="amount" type="number" step="0.01" min="0"
-                            value={newAmount}
-                            onChange={(e) => setNewAmount(e.target.value)}
-                            placeholder="0.00"
-                            disabled={isOverallLoading || isSubmittingBudget}
-                            className="w-full xs:w-[150px] bg-background"
-                          />
-                          {currentTab === 'expense' && selectedCategory && suggestedAmount !== null && (
-                            <Button
-                              type="button" variant="ghost" size="sm"
-                              onClick={applySuggestion}
-                              title={`Apply suggested amount: ${formatCurrency(suggestedAmount)}`}
-                              className="whitespace-nowrap h-10 text-xs text-muted-foreground hover:text-primary"
-                              disabled={isSubmittingBudget}
-                            >
-                              <Lightbulb className="h-3 w-3 mr-1" />
-                              {formatCurrency(suggestedAmount)}?
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                      <div className="w-full sm:w-auto pt-2 sm:pt-0">
-                        <Button
-                          onClick={handleSetOrUpdateBudget}
-                          disabled={!selectedCategoryId || !newAmount || isOverallLoading || isSubmittingBudget}
-                          className="w-full sm:w-auto h-10"
-                        >
-                          {isSubmittingBudget ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="h-4 w-4 mr-2" />}
-                          {isSubmittingBudget ? 'Saving...' : (budgetItems.find(item => item.category_id === selectedCategoryId && item.month === selectedMonth) ? 'Update' : 'Set')}
-                        </Button>
-                      </div>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            {/* === Left: Management Form === */}
+            <div className="lg:col-span-4 space-y-6">
+              <Card className="border-border/60 shadow-lg shadow-primary/5 rounded-[1.5rem] sticky top-6">
+                <CardHeader>
+                  <CardTitle className="text-lg">Manage Budget</CardTitle>
+                  <CardDescription>Set limits for {currentTab} categories</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="category" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Category</Label>
+                    <Select
+                      value={selectedCategoryId}
+                      onValueChange={(value) => {
+                        const selectedCat = (currentTab === 'expense' ? expenseCategories : incomeCategories).find(c => c.id === value);
+                        setSelectedCategoryId(value);
+                        setSelectedCategory(selectedCat?.name || '');
+                      }}
+                      disabled={isOverallLoading || isSubmittingBudget}
+                    >
+                      <SelectTrigger id="category" className="h-12 rounded-xl bg-muted/50 border-transparent hover:bg-muted/80 transition-colors focus:ring-0">
+                        <SelectValue placeholder="Select Category" />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-xl">
+                        {isLoadingCategories ? (
+                          <SelectItem value="loading" disabled>Loading...</SelectItem>
+                        ) : (currentTab === 'expense' ? expenseCategories : incomeCategories).length === 0 ? (
+                          <SelectItem value="no-cat" disabled>No categories found</SelectItem>
+                        ) : (
+                          (currentTab === 'expense' ? expenseCategories : incomeCategories).map(category => (
+                            <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="amount" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Target Amount</Label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">$</span>
+                      <Input
+                        id="amount" type="number" step="0.01" min="0"
+                        value={newAmount}
+                        onChange={(e) => setNewAmount(e.target.value)}
+                        placeholder="0.00"
+                        disabled={isOverallLoading || isSubmittingBudget}
+                        className="pl-8 h-12 rounded-xl bg-muted/50 border-transparent hover:bg-muted/80 transition-colors focus-visible:ring-0 text-lg font-bold"
+                      />
                     </div>
-                  </CardContent>
-                </Card>
+                    {currentTab === 'expense' && selectedCategory && suggestedAmount !== null && (
+                      <Button
+                        type="button" variant="ghost" size="sm"
+                        onClick={applySuggestion}
+                        className="w-full justify-start h-8 px-2 text-xs text-muted-foreground hover:text-primary -ml-2"
+                      >
+                        <Lightbulb className="h-3 w-3 mr-1.5" />
+                        Suggestion based on avg: {formatCurrency(suggestedAmount)}
+                      </Button>
+                    )}
+                  </div>
 
-                {/* List Content */}
-                <TabsContent value="expense" className="mt-0 space-y-4">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Expense Breakdown</CardTitle>
-                      <CardDescription>Track spending against budget.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      {renderBudgetList('expense')}
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-                <TabsContent value="income" className="mt-0 space-y-4">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Income Breakdown</CardTitle>
-                      <CardDescription>Track realized income against goals.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      {renderBudgetList('income')}
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-              </div>
+                  <Button
+                    onClick={handleSetOrUpdateBudget}
+                    disabled={!selectedCategoryId || !newAmount || isOverallLoading || isSubmittingBudget}
+                    className="w-full h-12 rounded-xl font-bold text-base mt-2 shadow-lg shadow-primary/20 hover:scale-[1.02] transition-all"
+                  >
+                    {isSubmittingBudget ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <PlusCircle className="h-5 w-5 mr-2" />}
+                    {isSubmittingBudget ? 'Saving...' : 'Save Rule'}
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
 
-            </Tabs>
-          </CardContent>
-        </Card>
+            {/* === Right: List Content === */}
+            <div className="lg:col-span-8">
+              <TabsContent value="expense" className="mt-0 space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-bold tracking-tight">Expense Limits</h3>
+                  <Badge variant="outline" className="rounded-lg">{budgetItems.filter(b => b.type === 'expense').length} Active Rules</Badge>
+                </div>
+                {renderBudgetList('expense')}
+              </TabsContent>
+              <TabsContent value="income" className="mt-0 space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-bold tracking-tight">Income Goals</h3>
+                  <Badge variant="outline" className="rounded-lg">{budgetItems.filter(b => b.type === 'income').length} Active Goals</Badge>
+                </div>
+                {renderBudgetList('income')}
+              </TabsContent>
+            </div>
+          </div>
+        </Tabs>
+
       </div>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="rounded-2xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogTitle>Remove Budget Rule?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove the budget for <strong>{budgetToDelete?.category}</strong>. This action cannot be undone.
+              Are you sure you want to remove the budget for <strong>{budgetToDelete?.category}</strong>?
+              <br />Existing transactions will not be deleted, but you will stop tracking against this limit.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteBudget} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
+            <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteBudget} className="bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-xl">
+              Remove Rule
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

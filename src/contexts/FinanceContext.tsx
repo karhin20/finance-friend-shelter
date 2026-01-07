@@ -182,8 +182,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
             return (data as Income[]) || [];
         },
         enabled: !!user && !!filters.dateRange.from && !!filters.dateRange.to, // Only run if user and dates are set
-        placeholderData: (previousData) => previousData,
-        staleTime: 1000 * 60 * 5, // 5 minutes cache
+
     });
 
     const expensesQuery = useQuery<Expense[]>({
@@ -205,8 +204,7 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
             return (data as Expense[]) || [];
         },
         enabled: !!user && !!filters.dateRange.from && !!filters.dateRange.to, // Only run if user and dates are set
-        placeholderData: (previousData) => previousData,
-        staleTime: 1000 * 60 * 5, // 5 minutes cache
+
     });
 
     // --- Automatic Category Setup ---
@@ -238,7 +236,6 @@ export const FinanceProvider = ({ children }: { children: ReactNode }) => {
             return data || [];
         },
         enabled: !!user, // Only run if user is logged in
-        staleTime: 1000 * 60 * 5, // 5 minutes cache
     });
 
     // --- Mutations ---
