@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import confetti from 'canvas-confetti';
 
 // New Components
 import { SavingsForm, SavingFormData } from '@/components/savings/SavingsForm';
@@ -307,6 +308,21 @@ const SavingsPage = () => {
       }
 
       toast({ title: 'Funds Added', description: `Added ${formatCurrency(amountToAdd)} to "${savingToAddFunds.title}".` });
+
+      // Check if goal was just completed
+      const wasCompleted = savingToAddFunds.goal_amount && savingToAddFunds.amount < savingToAddFunds.goal_amount;
+      const isNowCompleted = savingToAddFunds.goal_amount && newAmount >= savingToAddFunds.goal_amount;
+
+      if (wasCompleted && isNowCompleted) {
+        // Fire confetti! 🎉
+        confetti({
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+        toast({ title: '🎉 Goal Achieved!', description: `You've reached your goal for "${savingToAddFunds.title}"!` });
+      }
+
       setAddFundsDialogOpen(false);
       setSavingToAddFunds(null);
     } catch (error: any) {

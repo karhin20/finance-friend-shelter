@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowUpRight, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
 import {
     Dialog,
     DialogContent,
@@ -52,7 +53,11 @@ export const FinancialOverviewCards = ({
                                         {isLoading ? (
                                             <Skeleton className="h-12 w-48 bg-white/20" />
                                         ) : (
-                                            formatCurrency(balance).replace(/^(\D+)/, '$1 ')
+                                            <AnimatedNumber
+                                                value={balance}
+                                                formatFn={(v) => formatCurrency(v).replace(/^(\D+)/, '$1 ')}
+                                                className="tabular-nums"
+                                            />
                                         )}
                                     </h2>
                                 </div>
@@ -70,7 +75,12 @@ export const FinancialOverviewCards = ({
                                 <div className="whitespace-nowrap">
                                     <p className="text-white/50 font-bold uppercase tracking-tighter leading-none mb-1 text-[10px] md:text-xs">Income</p>
                                     {isLoading ? <Skeleton className="h-5 w-24 bg-white/20 mt-1" /> : (
-                                        <p className="font-bold text-sm md:text-base leading-none tabular-nums">{formatCurrency(totalIncome).replace(/^(\D+)/, '$1 ')}</p>
+                                        <p className="font-bold text-sm md:text-base leading-none tabular-nums">
+                                            <AnimatedNumber
+                                                value={totalIncome}
+                                                formatFn={(v) => formatCurrency(v).replace(/^(\D+)/, '$1 ')}
+                                            />
+                                        </p>
                                     )}
                                 </div>
                             </div>
@@ -81,7 +91,12 @@ export const FinancialOverviewCards = ({
                                 <div className="whitespace-nowrap">
                                     <p className="text-white/50 font-bold uppercase tracking-tighter leading-none mb-1 text-[10px] md:text-xs">Expenses</p>
                                     {isLoading ? <Skeleton className="h-5 w-24 bg-white/20 mt-1" /> : (
-                                        <p className="font-bold text-sm md:text-base leading-none tabular-nums">{formatCurrency(totalExpenses).replace(/^(\D+)/, '$1 ')}</p>
+                                        <p className="font-bold text-sm md:text-base leading-none tabular-nums">
+                                            <AnimatedNumber
+                                                value={totalExpenses}
+                                                formatFn={(v) => formatCurrency(v).replace(/^(\D+)/, '$1 ')}
+                                            />
+                                        </p>
                                     )}
                                 </div>
                             </div>
@@ -101,7 +116,12 @@ export const FinancialOverviewCards = ({
                             <div>
                                 <p className="text-xs md:text-sm text-muted-foreground font-medium">Daily Average</p>
                                 <h3 className="text-lg md:text-2xl font-black font-display tracking-tight tabular-nums text-foreground flex items-center">
-                                    {isLoading ? <Skeleton className="h-8 w-24 bg-muted" /> : formatCurrency(averageDailyExpenses)}
+                                    {isLoading ? <Skeleton className="h-8 w-24 bg-muted" /> : (
+                                        <AnimatedNumber
+                                            value={averageDailyExpenses}
+                                            formatFn={formatCurrency}
+                                        />
+                                    )}
                                 </h3>
                             </div>
                         </div>
